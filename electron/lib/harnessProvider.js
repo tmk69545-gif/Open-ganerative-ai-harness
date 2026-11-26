@@ -105,7 +105,24 @@ function register() {
             },
         });
         latestRunId = run.runId;
-        return run.done;
+        const result = await run.done;
+        // If the harness generated a local image file on disk (e.g. agy generate_image),
+        // convert it to a data URL so the renderer displays it reliably under webSecurity: true.
+        const localImgMatch = String(result.output || '').match(/([A-Za-z]:\\[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)|\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif))/i);
+        if (localImgMatch) {
+            const imgPath = localImgMatch[1];
+            try {
+                if (fs.existsSync(imgPath) && fs.statSync(imgPath).isFile()) {
+                    const ext = path.extname(imgPath).slice(1).toLowerCase();
+                    const mime = ext === 'jpg' ? 'jpeg' : ext;
+                    const b64 = fs.readFileSync(imgPath).toString('base64');
+                    result.mediaUrl = `data:image/${mime};base64,${b64}`;
+                }
+            } catch {
+                // ignore unreadable path
+            }
+        }
+        return result;
     });
 
     ipcMain.handle('harness:cancel', (_, runId) => {

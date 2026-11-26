@@ -25,13 +25,18 @@ export function extractMediaFromHarnessOutput(text, kind = 'image') {
     }
 
     const mediaRegex = kind === 'video'
-        ? /(https?:\/\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)(?:\?[^\s"'<>)]*)?|file:\/\/\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv))/i
-        : /(https?:\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif|svg)(?:\?[^\s"'<>)]*)?|https?:\/\/(?:cdn|api)\.muapi\.ai\/[^\s"'<>)]+|file:\/\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif))/i;
+        ? /(https?:\/\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)(?:\?[^\s"'<>)]*)?|file:\/\/\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)|[A-Za-z]:\\[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)|\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv))/i
+        : /(https?:\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif|svg)(?:\?[^\s"'<>)]*)?|https?:\/\/(?:cdn|api)\.muapi\.ai\/[^\s"'<>)]+|file:\/\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)|[A-Za-z]:\\[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)|\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif))/i;
 
     const match = raw.match(mediaRegex);
     if (match) {
+        let url = match[1];
+        if (/^[A-Za-z]:\\/.test(url) || url.startsWith('/')) {
+            const normalized = url.replace(/\\/g, '/');
+            url = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`;
+        }
         return {
-            mediaUrl: match[1],
+            mediaUrl: url,
             mediaKind: kind,
             isSvg: false,
             text: raw,
@@ -309,12 +314,13 @@ export function createStudioHarnessController({
             });
 
             lastFinalOutput = String(res?.output || '').trim();
-            if (lastFinalOutput) logEl.textContent = lastFinalOutput;
+            logEl.textContent = lastFinalOutput || 'Harness completed with no text output.';
 
             const extracted = extractMediaFromHarnessOutput(lastFinalOutput, kind);
-            if (extracted.mediaUrl && onMediaReady) {
+            const mediaUrl = res?.mediaUrl || extracted.mediaUrl;
+            if (mediaUrl && onMediaReady) {
                 onMediaReady({
-                    url: extracted.mediaUrl,
+                    url: mediaUrl,
                     model: `harness:${activeHarness.id}/${modelId || 'default'}`,
                     output: lastFinalOutput,
                 });

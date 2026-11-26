@@ -30,6 +30,10 @@ if (prompt === 'hang') {
     console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Codex reply' } }));
 } else if ('${name}' === 'opencode') {
     console.log(JSON.stringify({ type: 'text', part: { text: 'OpenCode reply' } }));
+} else if ('${name}' === 'agy') {
+    console.log(JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'Agy ' } }));
+    console.log(JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'streamed' } }));
+    console.log(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'Antigravity reply: ' + prompt } }));
 } else {
     console.log('Antigravity reply: ' + prompt);
 }
@@ -73,8 +77,23 @@ test('startHarnessRun streams normalized output for claude, codex, opencode, and
     const opencodeRun = await startHarnessRun({ harnessId: 'opencode', prompt: 'test', cwd: tmpDir, binPath: bins.opencode });
     assert.equal((await opencodeRun.done).output, 'OpenCode reply');
 
-    const agyRun = await startHarnessRun({ harnessId: 'antigravity', prompt: 'ok', cwd: tmpDir, binPath: bins.antigravity });
+    const agyEvents = [];
+    const agyRun = await startHarnessRun({
+        harnessId: 'antigravity',
+        prompt: 'ok',
+        cwd: tmpDir,
+        binPath: bins.antigravity,
+        onEvent: (e) => agyEvents.push(e),
+    });
     assert.equal((await agyRun.done).output, 'Antigravity reply: ok');
+    assert.ok(agyEvents.some((e) => e.type === 'chunk' && e.text === 'Agy '));
+});
+
+test('startHarnessRun handles .cmd paths with spaces on Windows', async () => {
+    const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'ogai space dir-'));
+    const spacedBin = createFakeCliShim(tmpBase, 'codex');
+    const run = await startHarnessRun({ harnessId: 'codex', prompt: 'hello world', cwd: tmpBase, binPath: spacedBin });
+    assert.equal((await run.done).output, 'Codex reply');
 });
 
 test('startHarnessRun surfaces CLI exit failures and supports cancellation', async () => {
