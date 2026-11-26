@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('harnesses', {
     installSkills: (opts) => ipcRenderer.invoke('harness:install-skills', opts),
     run: (opts) => ipcRenderer.invoke('harness:run', opts),
     cancel: (runId) => ipcRenderer.invoke('harness:cancel', runId),
+    synthesizeSpeech: (opts) => ipcRenderer.invoke('harness:synthesize-speech', opts),
+    saveMedia: (opts) => ipcRenderer.invoke('harness:save-media', opts),
     onOutput: (callback) => {
         const listener = (_, data) => callback(data);
         ipcRenderer.on('harness:output', listener);

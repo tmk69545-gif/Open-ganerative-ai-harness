@@ -1,5 +1,6 @@
 import { harnessClient, isHarnessAvailable } from './harnessClient.js';
 import { isLocalAIAvailable } from './localInferenceClient.js';
+import { renderStoryboardVideo } from './harnessVideoComposer.js';
 import { t } from './i18n.js';
 
 export function formatStudioError(err) {
@@ -92,8 +93,24 @@ export function buildHarnessStudioPrompt({
         };
     }
 
+    if (isAntigravity) {
+        return {
+            wrappedPrompt: `Create a 3-scene ${ar} video storyboard for: ${prompt}
+Do NOT call any muapi MCP tools because no MuAPI API key is configured.
+If a non-MuAPI video MCP tool produces an .mp4 or .webm directly, reply with its exact saved file path.
+Otherwise invoke 3 parallel image-generator subagents right now (one clean ${ar} visual frame per scene — let image-generator save to its default artifact directory rather than the workspace root).
+After all 3 finish, reply ONLY with a JSON block tagged \`\`\`ogai-storyboard matching this schema:
+{"durationSec":10,"audioScript":"1-2 sentence voiceover narration","accentColor":"#22d3ee","scenes":[{"durationSec":3,"headline":"Short Title","subline":"Short Subtitle","motion":"zoom-in","imagePath":"<exact saved jpg path>"}]}`,
+            mode: 'auto',
+            autoApprove: true,
+        };
+    }
+
     return {
-        wrappedPrompt: `User video request (${ar}): ${prompt}\nDo NOT call any muapi MCP tools because no MuAPI API key is configured. Only call non-MuAPI video MCP tools or local video scripts (such as Wan2GP, ComfyUI, or ffmpeg) if installed on this machine — if one generates a playable .mp4 or .webm file, reply with its exact saved file path. Otherwise explain briefly that no local/non-MuAPI video generator backend is connected and output a single concise production-ready video generation prompt describing camera motion, lighting, and action with no markdown fences.`,
+        wrappedPrompt: `Create a 3-scene ${ar} animated video storyboard for: ${prompt}
+Do NOT call any muapi MCP tools because no MuAPI API key is configured.
+If you have a non-MuAPI video tool/MCP that creates an .mp4 or .webm file, reply with its exact saved file path; otherwise reply ONLY with a JSON block tagged \`\`\`ogai-storyboard matching this schema (using standalone 1280x720 <svg> scene artwork for each scene):
+{"durationSec":10,"audioScript":"1-2 sentence voiceover narration","accentColor":"#22d3ee","scenes":[{"durationSec":3,"headline":"Short Title","subline":"Short Subtitle","motion":"zoom-in","svg":"<svg viewBox='0 0 1280 720' xmlns='http://www.w3.org/2000/svg'>...</svg>"}]}`,
         mode: hasNonMuapiMcp ? 'auto' : 'plan',
         autoApprove: hasNonMuapiMcp,
     };
@@ -372,8 +389,43 @@ export function createStudioHarnessController({
             logEl.textContent = lastFinalOutput || 'Harness completed with no text output.';
 
             const extracted = extractMediaFromHarnessOutput(lastFinalOutput, kind);
-            const mediaUrl = res?.mediaUrl || extracted.mediaUrl;
+            let mediaUrl = res?.mediaUrl || extracted.mediaUrl;
+
+            if (kind === 'video' && !mediaUrl && res?.storyboard?.scenes?.length) {
+                logEl.textContent = 'Synthesizing voiceover narration & rendering WebM video...\n';
+                const voiceAudioUrl = res.storyboard.audioScript
+                    ? await harnessClient.synthesizeSpeech({ text: res.storyboard.audioScript }).catch(() => null)
+                    : null;
+                const rendered = await renderStoryboardVideo({
+                    storyboard: res.storyboard,
+                    aspectRatio,
+                    voiceAudioUrl,
+                    onProgress: ({ pct }) => {
+                        logEl.textContent = `Rendering WebM video (motion + ${voiceAudioUrl ? 'voiceover + ' : ''}audio bed)... ${pct}%`;
+                    },
+                });
+                const saved = await harnessClient.saveMedia({
+                    bytes: rendered.bytes,
+                    ext: 'webm',
+                    name: prompt,
+                }).catch(() => null);
+                mediaUrl = saved?.url || URL.createObjectURL(rendered.blob);
+
+                const sceneSummary = res.storyboard.scenes
+                    .map((s, i) => `Scene ${i + 1} (${s.durationSec}s): ${s.headline || s.caption || 'Frame'}`)
+                    .join('\n');
+                lastFinalOutput = [
+                    `Rendered ${Math.round(rendered.durationSec)}s WebM video${voiceAudioUrl ? ' with voiceover narration & ambient audio' : ''}.`,
+                    saved?.path ? `Saved to: ${saved.path}` : '',
+                    res.storyboard.audioScript ? `Voiceover: "${res.storyboard.audioScript}"` : '',
+                    sceneSummary,
+                ].filter(Boolean).join('\n');
+                logEl.textContent = lastFinalOutput;
+            }
+
             if (mediaUrl && onMediaReady) {
+                outputPanel.classList.add('hidden');
+                outputPanel.classList.remove('flex');
                 onMediaReady({
                     url: mediaUrl,
                     model: `harness:${activeHarness.id}/${modelId || 'default'}`,

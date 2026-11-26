@@ -11,10 +11,13 @@ const {
     listModelsForHarness,
     findLocalMediaPath,
     attachLocalMediaResult,
+    synthesizeSpeechToDataUrl,
+    saveRenderedMedia,
 } = require('../../lib/harnesses');
 
 const CONFIG_DIR = path.join(app.getPath('userData'), 'local-ai');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'harnesses.json');
+const RENDERS_DIR = path.join(CONFIG_DIR, 'harness-renders');
 
 function readOverridesConfig() {
     try {
@@ -116,6 +119,20 @@ function register() {
         const targetId = runId || latestRunId;
         if (!targetId) return false;
         return cancelHarnessRun(targetId);
+    });
+
+    ipcMain.handle('harness:synthesize-speech', async (_, opts = {}) => {
+        return synthesizeSpeechToDataUrl({ text: opts?.text || '' });
+    });
+
+    ipcMain.handle('harness:save-media', (_, opts = {}) => {
+        return saveRenderedMedia({
+            bytes: opts?.bytes,
+            ext: opts?.ext || 'webm',
+            name: opts?.name || 'harness-video',
+            outputDir: RENDERS_DIR,
+            fsImpl: fs,
+        });
     });
 }
 

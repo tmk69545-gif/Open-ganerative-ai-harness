@@ -50,6 +50,16 @@ class HarnessClient {
         return window.harnesses.cancel(runId);
     }
 
+    async synthesizeSpeech(opts = {}) {
+        if (!isHarnessAvailable() || !window.harnesses?.synthesizeSpeech) return null;
+        return window.harnesses.synthesizeSpeech(opts);
+    }
+
+    async saveMedia(opts = {}) {
+        if (!isHarnessAvailable() || !window.harnesses?.saveMedia) return null;
+        return window.harnesses.saveMedia(opts);
+    }
+
     onOutput(callback) {
         if (!isHarnessAvailable()) return () => {};
         return window.harnesses.onOutput(callback);

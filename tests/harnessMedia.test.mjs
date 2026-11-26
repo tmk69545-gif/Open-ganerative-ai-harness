@@ -6,8 +6,9 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { findLocalMediaPath, attachLocalMediaResult } = require('../lib/harnesses/media.js');
+const { findLocalMediaPath, attachLocalMediaResult, saveRenderedMedia, parseStoryboardFromOutput } = require('../lib/harnesses/media.js');
 const { buildHarnessStudioPrompt, extractMediaFromHarnessOutput } = await import('../src/lib/harnessStudioMode.js');
+const { getCanvasDimensions, computeSceneTimeline, normalizeMotion } = await import('../src/lib/harnessVideoComposer.js');
 
 test('findLocalMediaPath and attachLocalMediaResult resolve Windows paths containing spaces', () => {
     const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogai space media-'));
@@ -83,4 +84,51 @@ test('buildHarnessStudioPrompt avoids MuAPI when credentials are absent and enab
     });
     assert.equal(vidWithKey.mode, 'auto');
     assert.doesNotMatch(vidWithKey.wrappedPrompt, /Do NOT call/i);
+});
+
+test('storyboard parser attaches multi-scene images with Windows spaces and timeline normalizes duration/motion', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogai space sb-'));
+    const s1 = path.join(tmpDir, 'scene 1.jpg');
+    const s2 = path.join(tmpDir, 'scene 2.jpg');
+    fs.writeFileSync(s1, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    fs.writeFileSync(s2, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+
+    const text = `Preparing storyboard...\n\`\`\`ogai-storyboard
+{
+  "durationSec": 10,
+  "audioScript": "Horbax cooler keeps ice frozen.",
+  "scenes": [
+    { "durationSec": 3, "headline": "Built Tough", "motion": "Slow cinematic push-in", "imagePath": ${JSON.stringify(s1)} },
+    { "durationSec": 4, "headline": "Cold Inside", "motion": "Gentle wide pullback", "imagePath": ${JSON.stringify(s2)} }
+  ]
+}
+\`\`\``;
+
+    const sb = parseStoryboardFromOutput(text);
+    assert.equal(sb.durationSec, 10);
+    assert.equal(sb.scenes.length, 2);
+
+    const attached = attachLocalMediaResult({ output: text });
+    assert.equal(attached.storyboard.scenes.length, 2);
+    assert.match(attached.storyboard.scenes[0].imageDataUrl, /^data:image\/jpeg;base64,/);
+    assert.match(attached.storyboard.scenes[1].imageDataUrl, /^data:image\/jpeg;base64,/);
+    assert.equal(attached.mediaUrl, undefined);
+
+    assert.deepEqual(getCanvasDimensions('16:9'), { width: 1280, height: 720 });
+    assert.deepEqual(getCanvasDimensions('9:16'), { width: 720, height: 1280 });
+    assert.equal(normalizeMotion('Slow cinematic push-in', 0), 'zoom-in');
+    assert.equal(normalizeMotion('Gentle wide pullback', 1), 'zoom-out');
+
+    const timeline = computeSceneTimeline(attached.storyboard.scenes, 10);
+    assert.equal(timeline.length, 2);
+    assert.ok(Math.abs(timeline[1].end - 10) < 1e-6);
+
+    const saved = saveRenderedMedia({
+        bytes: Uint8Array.from([1, 2, 3, 4]),
+        ext: 'webm',
+        name: 'Horbax Cooler Ad',
+        outputDir: path.join(tmpDir, 'renders'),
+    });
+    assert.equal(fs.existsSync(saved.path), true);
+    assert.match(saved.url, /^file:\/\/\//);
 });

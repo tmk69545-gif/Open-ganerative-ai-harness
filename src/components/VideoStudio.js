@@ -1234,7 +1234,8 @@ export function VideoStudio() {
         const current = resultVideo.src;
         if (current) {
             const entry = generationHistory.find(e => e.url === current);
-            downloadFile(current, `video-${entry?.id || 'clip'}.mp4`);
+            const ext = /\.webm(?:\?|$)/i.test(current) ? 'webm' : 'mp4';
+            downloadFile(current, `video-${entry?.id || 'clip'}.${ext}`);
         }
     };
 
