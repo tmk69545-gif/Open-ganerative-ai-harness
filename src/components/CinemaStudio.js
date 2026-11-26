@@ -5,7 +5,17 @@ import { buildNanoBananaPrompt, CAMERA_MAP, LENS_MAP, FOCAL_PERSPECTIVE, APERTUR
 import { AuthModal } from './AuthModal.js';
 import { t } from '../lib/i18n.js';
 import { createHistoryImageWithLabel } from '../lib/historyDom.mjs';
-import { createStudioHarnessController } from '../lib/harnessStudioMode.js';
+import { createStudioHarnessController, createVideoAudioToggleButton } from '../lib/harnessStudioMode.js';
+
+function getCinemaVisualPreset(lens = '') {
+    const l = String(lens).toLowerCase();
+    if (l.includes('warm') || l.includes('swirl')) return { grade: 'golden-hour', vfx: 'rays', letterbox: true };
+    if (l.includes('halation')) return { grade: 'cinema-film', vfx: 'flare', letterbox: true };
+    if (l.includes('anamorphic')) return { grade: 'teal-amber', vfx: 'flare', letterbox: true };
+    if (l.includes('70s') || l.includes('vintage')) return { grade: 'cinema-film', vfx: 'dust', letterbox: true };
+    if (l.includes('clinical')) return { grade: 'cold-steel', vfx: 'dust', letterbox: true };
+    return { grade: 'teal-amber', vfx: 'auto', letterbox: true };
+}
 
 export function CinemaStudio() {
     const container = document.createElement('div');
@@ -528,10 +538,13 @@ export function CinemaStudio() {
         return btn;
     };
 
+    const audioToggle = createVideoAudioToggleButton(resultVideo);
+    audioToggle.button.classList.add('hidden');
     const regenerateBtn = createActionBtn(t('cinema.regenerate'));
     const downloadBtn = createActionBtn(t('cinema.download'), true);
     const newPromptBtn = createActionBtn(t('cinema.newShot'));
 
+    canvasControls.appendChild(audioToggle.button);
     canvasControls.appendChild(regenerateBtn);
     canvasControls.appendChild(downloadBtn);
     canvasControls.appendChild(newPromptBtn);
@@ -622,11 +635,14 @@ export function CinemaStudio() {
             resultImg.classList.add('hidden');
             resultImg.removeAttribute('src');
             resultVideo.classList.remove('hidden');
+            audioToggle.button.classList.remove('hidden');
+            audioToggle.syncLabel();
             resultVideo.src = url;
             resultVideo.load?.();
         } else {
             try { resultVideo.pause?.(); } catch { /* ignore */ }
             resultVideo.classList.add('hidden');
+            audioToggle.button.classList.add('hidden');
             resultVideo.removeAttribute('src');
             resultImg.classList.remove('hidden');
             resultImg.src = url;
@@ -720,10 +736,16 @@ export function CinemaStudio() {
         if (harnessCtrl.getMode() === 'harness') {
             generateBtn.disabled = true;
             generateBtn.innerHTML = t('cinema.shooting');
+            const cinemaLook = getCinemaVisualPreset(currentSettings.lens);
             try {
                 await harnessCtrl.runPrompt({
                     prompt: `${finalPrompt}\nTarget resolution: ${resLabel}`,
                     aspectRatio: currentSettings.aspect_ratio,
+                    durationSec: 10,
+                    vfx: cinemaLook.vfx,
+                    grade: cinemaLook.grade,
+                    musicMood: 'cinematic',
+                    letterbox: cinemaLook.letterbox,
                     kind: cinemaHarnessKind,
                     onMediaReady: ({ url, mediaType, model }) => {
                         const resolvedType = mediaType === 'video' || /\.webm(?:\?|$)|\.mp4(?:\?|$)/i.test(url || '') ? 'video' : 'image';

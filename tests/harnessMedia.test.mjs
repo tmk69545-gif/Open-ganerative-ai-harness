@@ -8,7 +8,15 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { findLocalMediaPath, attachLocalMediaResult, saveRenderedMedia, parseStoryboardFromOutput } = require('../lib/harnesses/media.js');
 const { buildHarnessStudioPrompt, extractMediaFromHarnessOutput } = await import('../src/lib/harnessStudioMode.js');
-const { getCanvasDimensions, computeSceneTimeline, normalizeMotion } = await import('../src/lib/harnessVideoComposer.js');
+const {
+    getCanvasDimensions,
+    computeSceneTimeline,
+    normalizeMotion,
+    normalizeTransition,
+    resolveSceneVfx,
+    normalizeGrade,
+    normalizeMusicMood,
+} = await import('../src/lib/harnessVideoComposer.js');
 
 test('findLocalMediaPath and attachLocalMediaResult resolve Windows paths containing spaces', () => {
     const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogai space media-'));
@@ -158,4 +166,63 @@ test('Cinema Studio compiled camera prompts route cleanly through buildHarnessSt
     assert.equal(sequence.mode, 'auto');
     assert.match(sequence.wrappedPrompt, /ogai-storyboard/);
     assert.match(sequence.wrappedPrompt, /modular 8K digital cinema camera/i);
+});
+
+test('Cinematic VFX, grading, transition, music mood normalizers and 21:9/4:5 dimensions work cleanly', () => {
+    assert.deepEqual(getCanvasDimensions('21:9'), { width: 1344, height: 576 });
+    assert.deepEqual(getCanvasDimensions('4:5'), { width: 864, height: 1080 });
+
+    assert.equal(normalizeMotion('dynamic handheld chase', 0), 'handheld');
+    assert.equal(normalizeMotion('crane tilt up', 0), 'tilt-up');
+    assert.equal(normalizeTransition('whip pan left', 0), 'whip-left');
+    assert.equal(normalizeTransition('white flash burst', 0), 'flash');
+    assert.equal(resolveSceneVfx('', 'auto', 'ice cold cooler frost mist'), 'frost');
+    assert.equal(resolveSceneVfx('embers', 'frost', 'cool'), 'embers');
+    assert.equal(resolveSceneVfx('', 'none', 'ice'), 'none');
+    assert.equal(normalizeGrade('auto', 'golden campfire sunset'), 'golden-hour');
+    assert.equal(normalizeMusicMood('auto', 'upbeat festive commercial'), 'upbeat');
+
+    const richJson = `\`\`\`ogai-storyboard
+{
+  "durationSec": 15,
+  "full_script": "Beat the heat with Horbax!",
+  "musicMood": "upbeat",
+  "grade": "cold-steel",
+  "vfx": "frost",
+  "letterbox": true,
+  "sound_effects": ["whoosh", "crisp ice crackle"],
+  "scenes": [
+    { "durationSec": 5, "headline": "Horbax", "transition": "flash", "vfx": "frost" },
+    { "durationSec": 5, "headline": "Arctic Chill", "transition": "whip-left" },
+    { "durationSec": 5, "headline": "Grand Opening" }
+  ]
+}
+\`\`\``;
+    const parsed = parseStoryboardFromOutput(richJson);
+    assert.equal(parsed.audioScript, 'Beat the heat with Horbax!');
+    assert.equal(parsed.vfx, 'frost');
+    assert.equal(parsed.grade, 'cold-steel');
+    assert.equal(parsed.musicMood, 'upbeat');
+    assert.equal(parsed.letterbox, true);
+    assert.match(parsed.soundEffects, /ice crackle/);
+    assert.equal(parsed.scenes[2].titleStyle, 'hero-center');
+
+    const longPrompt = buildHarnessStudioPrompt({
+        kind: 'video',
+        prompt: 'Horbax air cooler opening',
+        aspectRatio: '21:9',
+        durationSec: 15,
+        vfx: 'frost',
+        grade: 'cold-steel',
+        musicMood: 'upbeat',
+        letterbox: true,
+        negativePrompt: 'blurry, watermarks',
+        hasReferenceImages: true,
+        harness: { id: 'antigravity', config: { mcpConfigured: true, muapiHasCredentials: false } },
+        hasAppMuapiKey: false,
+    });
+    assert.match(longPrompt.wrappedPrompt, /4-scene 15-second 21:9/i);
+    assert.match(longPrompt.wrappedPrompt, /VFX=frost/);
+    assert.match(longPrompt.wrappedPrompt, /Avoid: blurry, watermarks/);
+    assert.match(longPrompt.wrappedPrompt, /reference frame/i);
 });

@@ -48,6 +48,48 @@ export function extractMediaFromHarnessOutput(text, kind = 'image') {
 }
 
 /**
+ * Read a browser File into a local data URL without remote upload or MuAPI credentials.
+ */
+export function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        if (!file) {
+            reject(new Error('No file provided'));
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Failed to read uploaded image file'));
+        reader.readAsDataURL(file);
+    });
+}
+
+/**
+ * Shared sound mute/unmute pill for VideoStudio and CinemaStudio players.
+ */
+export function createVideoAudioToggleButton(videoEl) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'bg-white/10 hover:bg-white/20 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all border border-white/10 backdrop-blur-lg text-white flex items-center gap-1.5';
+
+    const syncLabel = () => {
+        const isMuted = Boolean(videoEl?.muted);
+        btn.textContent = isMuted ? '🔇 Unmute Audio' : '🔊 Sound On';
+    };
+
+    btn.onclick = async () => {
+        if (!videoEl) return;
+        videoEl.muted = !videoEl.muted;
+        if (!videoEl.muted) {
+            try { await videoEl.play?.(); } catch { /* ignore */ }
+        }
+        syncLabel();
+    };
+    videoEl?.addEventListener?.('volumechange', syncLabel);
+    syncLabel();
+    return { button: btn, syncLabel };
+}
+
+/**
  * Build the prompt and execution mode for running Studio image/video requests
  * through a CLI harness without requiring paid MuAPI credentials.
  */
@@ -55,6 +97,13 @@ export function buildHarnessStudioPrompt({
     kind = 'image',
     prompt,
     aspectRatio,
+    durationSec = 10,
+    vfx = 'auto',
+    grade = 'auto',
+    musicMood = 'auto',
+    letterbox = null,
+    negativePrompt = '',
+    hasReferenceImages = false,
     harness,
     hasAppMuapiKey = false,
 } = {}) {
@@ -62,6 +111,7 @@ export function buildHarnessStudioPrompt({
     const canUseMuapi = Boolean(hasAppMuapiKey || harness?.config?.muapiHasCredentials);
     const hasNonMuapiMcp = Boolean(harness?.config?.nonMuapiServers?.length);
     const isAntigravity = harness?.id === 'antigravity';
+    const negRule = negativePrompt ? `\nAvoid: ${negativePrompt}` : '';
 
     if (kind === 'image') {
         if (isAntigravity) {
@@ -69,7 +119,7 @@ export function buildHarnessStudioPrompt({
                 ? 'Prefer your built-in generate_image / image-generator subagent first (or MuAPI/other MCP image tools if helpful).'
                 : 'Do NOT call any muapi MCP tools because no MuAPI API key is configured.';
             return {
-                wrappedPrompt: `Generate an image for this request (${ar}): ${prompt}\nUse your built-in generate_image tool / image-generator subagent natively to generate the image file. ${muapiRule} Include the exact saved image file path in your reply.`,
+                wrappedPrompt: `Generate an image for this request (${ar}): ${prompt}${negRule}\nUse your built-in generate_image tool / image-generator subagent natively to generate the image file. ${muapiRule} Include the exact saved image file path in your reply.`,
                 mode: 'auto',
                 autoApprove: true,
             };
@@ -79,7 +129,7 @@ export function buildHarnessStudioPrompt({
             ? 'Use any image generation MCP/tool if available, or '
             : 'Do NOT call muapi MCP tools (no MuAPI API key is configured). Use any non-MuAPI image generation tool/script if available, or ';
         return {
-            wrappedPrompt: `${muapiRule}output either a saved local image file path (.png/.jpg/.webp) or a clean standalone <svg> illustration matching (${ar}) for: ${prompt}`,
+            wrappedPrompt: `${muapiRule}output either a saved local image file path (.png/.jpg/.webp) or a clean standalone <svg> illustration matching (${ar}) for: ${prompt}${negRule}`,
             mode: (canUseMuapi || hasNonMuapiMcp) ? 'auto' : 'plan',
             autoApprove: Boolean(canUseMuapi || hasNonMuapiMcp),
         };
@@ -87,30 +137,42 @@ export function buildHarnessStudioPrompt({
 
     if (canUseMuapi) {
         return {
-            wrappedPrompt: `If video generation MCP tools are available, generate the requested video (${ar}): ${prompt} and include the resulting media URL or saved file path in your reply. Otherwise write a single concise production-ready video generation prompt describing camera motion, lighting, and action with no markdown fences.`,
+            wrappedPrompt: `If video generation MCP tools are available, generate the requested video (${ar}, ${durationSec}s): ${prompt}${negRule} and include the resulting media URL or saved file path in your reply. Otherwise write a single concise production-ready video generation prompt describing camera motion, lighting, and action with no markdown fences.`,
             mode: 'auto',
             autoApprove: true,
         };
     }
 
+    const dur = Math.max(4, Math.min(35, Number(durationSec) || 10));
+    const sceneCount = dur >= 14 ? 4 : 3;
+    const lookHints = [
+        vfx && vfx !== 'auto' ? `VFX=${vfx}` : null,
+        grade && grade !== 'auto' ? `grade=${grade}` : null,
+        musicMood && musicMood !== 'auto' ? `musicMood=${musicMood}` : null,
+        typeof letterbox === 'boolean' ? `letterbox=${letterbox}` : null,
+    ].filter(Boolean).join(', ');
+    const styleLine = lookHints ? `\nPreferred cinematic direction: ${lookHints}.` : '';
+    const refLine = hasReferenceImages ? '\nThe user also provided reference frame(s); keep brand/subject continuity matching them.' : '';
+    const schemaExample = `{"durationSec":${dur},"audioScript":"Concise voiceover script","musicMood":"cinematic|upbeat|dramatic|electronic|ambient","grade":"teal-amber|cold-steel|golden-hour|cyber-neon|cinema-film|noir","vfx":"frost|embers|flare|rays|neon|rain|dust","letterbox":false,"soundEffects":"whoosh, subtle chime","accentColor":"#22d3ee","scenes":[{"durationSec":3,"headline":"Short Title","subline":"Short Subtitle","motion":"zoom-in|zoom-out|pan-left|pan-right|tilt-up|tilt-down|handheld|punch-zoom","transition":"dissolve|flash|whip-left|whip-right|zoom-burst|wipe","vfx":"auto","titleStyle":"lower-third|hero-center","imagePath":"<exact saved jpg path>"}]}`;
+
     if (isAntigravity) {
         return {
-            wrappedPrompt: `Create a 3-scene ${ar} video storyboard for: ${prompt}
+            wrappedPrompt: `Create a ${sceneCount}-scene ${dur}-second ${ar} cinematic video storyboard for: ${prompt}${styleLine}${refLine}${negRule}
 Do NOT call any muapi MCP tools because no MuAPI API key is configured.
 If a non-MuAPI video MCP tool produces an .mp4 or .webm directly, reply with its exact saved file path.
-Otherwise invoke 3 parallel image-generator subagents right now (one clean ${ar} visual frame per scene — let image-generator save to its default artifact directory rather than the workspace root).
-After all 3 finish, reply ONLY with a JSON block tagged \`\`\`ogai-storyboard matching this schema:
-{"durationSec":10,"audioScript":"1-2 sentence voiceover narration","accentColor":"#22d3ee","scenes":[{"durationSec":3,"headline":"Short Title","subline":"Short Subtitle","motion":"zoom-in","imagePath":"<exact saved jpg path>"}]}`,
+Otherwise invoke ${sceneCount} parallel image-generator subagents right now (one crisp ${ar} keyframe visual per scene — let image-generator save to its default artifact directory rather than the workspace root; make the closing scene a strong hero product/ending shot).
+After all finish, reply ONLY with a JSON block tagged \`\`\`ogai-storyboard matching this schema (use each returned path as imagePath):
+${schemaExample}`,
             mode: 'auto',
             autoApprove: true,
         };
     }
 
     return {
-        wrappedPrompt: `Create a 3-scene ${ar} animated video storyboard for: ${prompt}
+        wrappedPrompt: `Create a ${sceneCount}-scene ${dur}-second ${ar} animated video storyboard for: ${prompt}${styleLine}${refLine}${negRule}
 Do NOT call any muapi MCP tools because no MuAPI API key is configured.
-If you have a non-MuAPI video tool/MCP that creates an .mp4 or .webm file, reply with its exact saved file path; otherwise reply ONLY with a JSON block tagged \`\`\`ogai-storyboard matching this schema (using standalone 1280x720 <svg> scene artwork for each scene):
-{"durationSec":10,"audioScript":"1-2 sentence voiceover narration","accentColor":"#22d3ee","scenes":[{"durationSec":3,"headline":"Short Title","subline":"Short Subtitle","motion":"zoom-in","svg":"<svg viewBox='0 0 1280 720' xmlns='http://www.w3.org/2000/svg'>...</svg>"}]}`,
+If you have a non-MuAPI video tool/MCP that creates an .mp4 or .webm file, reply with its exact saved file path; otherwise reply ONLY with a JSON block tagged \`\`\`ogai-storyboard matching this schema (replace "imagePath" with "svg": a crisp standalone 1280x720 <svg viewBox='0 0 1280 720' xmlns='http://www.w3.org/2000/svg'> illustration per scene):
+${schemaExample}`,
         mode: hasNonMuapiMcp ? 'auto' : 'plan',
         autoApprove: hasNonMuapiMcp,
     };
@@ -332,7 +394,19 @@ export function createStudioHarnessController({
         }
     };
 
-    const runPrompt = async ({ prompt, aspectRatio, kind: kindOverride, onMediaReady }) => {
+    const runPrompt = async ({
+        prompt,
+        aspectRatio,
+        durationSec = 10,
+        vfx = 'auto',
+        grade = 'auto',
+        musicMood = 'auto',
+        letterbox = null,
+        negativePrompt = '',
+        referenceImages = [],
+        kind: kindOverride,
+        onMediaReady,
+    }) => {
         const effectiveKind = kindOverride || kind;
         clearError();
         if (!hasHarness) throw new Error('Harnesses are only available in the Electron desktop app or CLI.');
@@ -348,6 +422,7 @@ export function createStudioHarnessController({
         const modelObj = getSelectedModel();
         const modelId = modelObj?.id || '';
         const modelLabel = modelObj?.name || modelId || 'Default';
+        const validRefs = (referenceImages || []).filter(Boolean);
 
         lastFinalOutput = '';
         apiGenBtn.textContent = `Generate ${effectiveKind} via API`;
@@ -376,6 +451,13 @@ export function createStudioHarnessController({
                 kind: effectiveKind,
                 prompt,
                 aspectRatio,
+                durationSec,
+                vfx,
+                grade,
+                musicMood,
+                letterbox,
+                negativePrompt,
+                hasReferenceImages: validRefs.length > 0,
                 harness: activeHarness,
                 hasAppMuapiKey,
             });
@@ -395,17 +477,57 @@ export function createStudioHarnessController({
             let mediaUrl = res?.mediaUrl || extracted.mediaUrl;
             let mediaType = res?.mediaType || extracted.mediaKind || effectiveKind;
 
-            if (effectiveKind === 'video' && !mediaUrl && res?.storyboard?.scenes?.length) {
-                logEl.textContent = 'Synthesizing voiceover narration & rendering WebM video...\n';
-                const voiceAudioUrl = res.storyboard.audioScript
-                    ? await harnessClient.synthesizeSpeech({ text: res.storyboard.audioScript }).catch(() => null)
+            // If user uploaded reference frames for Video and harness returned no JSON scenes,
+            // synthesize a multi-beat animated I2V/FLF storyboard straight from uploaded frames.
+            let storyboard = res?.storyboard;
+            if (effectiveKind === 'video' && !mediaUrl && (!storyboard || !storyboard.scenes?.length) && validRefs.length > 0) {
+                const dur = Math.max(4, Math.min(35, Number(durationSec) || 10));
+                const shortTitle = prompt.split(/[.,;\n]/)[0].trim().slice(0, 40) || 'AI Cinema Sequence';
+                storyboard = {
+                    durationSec: dur,
+                    audioScript: lastFinalOutput.slice(0, 260),
+                    vfx: vfx || 'auto',
+                    grade: grade || 'auto',
+                    musicMood: musicMood || 'cinematic',
+                    letterbox: Boolean(letterbox),
+                    scenes: [
+                        { durationSec: dur * 0.35, headline: shortTitle, motion: 'zoom-in', transition: 'dissolve', titleStyle: 'lower-third', imageDataUrl: validRefs[0] },
+                        { durationSec: dur * 0.35, motion: 'pan-right', transition: 'flash', imageDataUrl: validRefs[validRefs.length - 1] },
+                        { durationSec: dur * 0.3, headline: shortTitle, motion: 'zoom-out', transition: 'zoom-burst', titleStyle: 'hero-center', imageDataUrl: validRefs[validRefs.length - 1] },
+                    ],
+                };
+            }
+
+            if (effectiveKind === 'video' && !mediaUrl && storyboard?.scenes?.length) {
+                const mergedStoryboard = {
+                    ...storyboard,
+                    durationSec: Number(durationSec) > 0 ? Number(durationSec) : storyboard.durationSec,
+                    vfx: vfx && vfx !== 'auto' ? vfx : (storyboard.vfx || 'auto'),
+                    grade: grade && grade !== 'auto' ? grade : (storyboard.grade || 'auto'),
+                    musicMood: musicMood && musicMood !== 'auto' ? musicMood : (storyboard.musicMood || 'cinematic'),
+                    letterbox: typeof letterbox === 'boolean' ? letterbox : Boolean(storyboard.letterbox),
+                    scenes: storyboard.scenes.map((scene, idx) => {
+                        if (scene.imageDataUrl || (scene.svg && scene.svg.includes('<svg'))) return scene;
+                        if (validRefs.length > 0) {
+                            const refUrl = idx === storyboard.scenes.length - 1
+                                ? validRefs[validRefs.length - 1]
+                                : validRefs[idx % validRefs.length];
+                            return { ...scene, imageDataUrl: refUrl };
+                        }
+                        return scene;
+                    }),
+                };
+
+                logEl.textContent = 'Synthesizing voiceover narration, SFX & VFX timeline...\n';
+                const voiceAudioUrl = mergedStoryboard.audioScript
+                    ? await harnessClient.synthesizeSpeech({ text: mergedStoryboard.audioScript }).catch(() => null)
                     : null;
                 const rendered = await renderStoryboardVideo({
-                    storyboard: res.storyboard,
+                    storyboard: mergedStoryboard,
                     aspectRatio,
                     voiceAudioUrl,
                     onProgress: ({ pct }) => {
-                        logEl.textContent = `Rendering WebM video (motion + ${voiceAudioUrl ? 'voiceover + ' : ''}audio bed)... ${pct}%`;
+                        logEl.textContent = `Rendering HD WebM (VFX: ${mergedStoryboard.vfx} · Grade: ${mergedStoryboard.grade}${voiceAudioUrl ? ' · Voiceover + SFX' : ''})... ${pct}%`;
                     },
                 });
                 const saved = await harnessClient.saveMedia({
@@ -416,13 +538,13 @@ export function createStudioHarnessController({
                 mediaUrl = saved?.url || URL.createObjectURL(rendered.blob);
                 mediaType = 'video';
 
-                const sceneSummary = res.storyboard.scenes
-                    .map((s, i) => `Scene ${i + 1} (${s.durationSec}s): ${s.headline || s.caption || 'Frame'}`)
+                const sceneSummary = mergedStoryboard.scenes
+                    .map((s, i) => `Scene ${i + 1} (${s.durationSec}s · ${s.motion || 'motion'} / ${s.transition || 'cut'}): ${s.headline || s.caption || 'Frame'}`)
                     .join('\n');
                 lastFinalOutput = [
-                    `Rendered ${Math.round(rendered.durationSec)}s WebM video${voiceAudioUrl ? ' with voiceover narration & ambient audio' : ''}.`,
+                    `Rendered ${Math.round(rendered.durationSec)}s WebM video (Grade: ${rendered.grade} · VFX: ${mergedStoryboard.vfx}${voiceAudioUrl ? ' · Voiceover + SFX + Music' : ' · SFX + Music'}).`,
                     saved?.path ? `Saved to: ${saved.path}` : '',
-                    res.storyboard.audioScript ? `Voiceover: "${res.storyboard.audioScript}"` : '',
+                    mergedStoryboard.audioScript ? `Voiceover: "${mergedStoryboard.audioScript}"` : '',
                     sceneSummary,
                 ].filter(Boolean).join('\n');
                 logEl.textContent = lastFinalOutput;

@@ -9,7 +9,8 @@ import { isWan2gpModelId, getLocalModelById, localT2VModels, localI2VModels } fr
 import { createHistoryMediaWithDownload } from '../lib/historyDom.mjs';
 import { createProviderFallbackTile, getProviderLogo, getProviderLogoAlt, getProviderFallbackText, handleProviderLogoError, shouldInvertProviderLogo } from '../lib/providerLogos.js';
 import { createHarnessPromptEnhancer } from '../lib/harnessEnhance.js';
-import { createStudioHarnessController } from '../lib/harnessStudioMode.js';
+import { createStudioHarnessController, readFileAsDataUrl, createVideoAudioToggleButton } from '../lib/harnessStudioMode.js';
+import { VFX_PRESETS, GRADE_PRESETS, MUSIC_MOODS } from '../lib/harnessVideoComposer.js';
 
 // Promotes a wan2gp catalog entry (lib/localModels.js shape) into the
 // `inputs`-shaped descriptor the Video Studio dropdowns/controls expect.
@@ -74,16 +75,23 @@ export function VideoStudio() {
     let imageMode = false; // false = t2v models, true = i2v models
     let v2vMode = false;   // true = video-to-video tools mode
     let uploadedVideoUrl = null;
+    let selectedVfx = 'auto';
+    let selectedGrade = 'auto';
+    let selectedMusicMood = 'auto';
+    let selectedLetterbox = null;
+    let negativePrompt = '';
 
     const getCurrentModels = () => v2vMode ? v2vModels : (imageMode ? i2vList() : t2vList());
     // Local Wan2GP entries don't live in the Muapi-derived helpers, so we
     // resolve aspect ratios off the catalog when the selected id is local.
     const getCurrentAspectRatios = (id) => {
+        if (harnessCtrl?.getMode?.() === 'harness') return ['16:9', '21:9', '9:16', '1:1', '4:5'];
         const local = getLocalModelById(id);
         if (local) return local.aspectRatios || ['16:9', '1:1', '9:16'];
         return imageMode ? getAspectRatiosForI2VModel(id) : getAspectRatiosForVideoModel(id);
     };
     const getCurrentDurations = (id) => {
+        if (harnessCtrl?.getMode?.() === 'harness') return [5, 8, 10, 15, 20];
         if (getLocalModelById(id)) return [];
         return imageMode ? getDurationsForI2VModel(id) : getDurationsForModel(id);
     };
@@ -164,15 +172,20 @@ export function VideoStudio() {
             }
             if (!imageMode) {
                 imageMode = true;
-                const currentT2V = t2vList().find(m => m.id === selectedModel);
-                const sibling = currentT2V?.family
-                    ? i2vList().find(m => m.family === currentT2V.family)
-                    : null;
-                const target = sibling || i2vList()[0];
-                selectedModel = target.id;
-                selectedModelName = target.name;
-                document.getElementById('v-model-btn-label').textContent = selectedModelName;
-                updateControlsForModel(selectedModel);
+                if (harnessCtrl.getMode() === 'harness') {
+                    endPicker.trigger.classList.remove('hidden');
+                    endPicker.trigger.classList.add('flex');
+                } else {
+                    const currentT2V = t2vList().find(m => m.id === selectedModel);
+                    const sibling = currentT2V?.family
+                        ? i2vList().find(m => m.family === currentT2V.family)
+                        : null;
+                    const target = sibling || i2vList()[0];
+                    selectedModel = target.id;
+                    selectedModelName = target.name;
+                    document.getElementById('v-model-btn-label').textContent = selectedModelName;
+                    updateControlsForModel(selectedModel);
+                }
             }
             textarea.placeholder = 'Describe the motion or effect (optional)';
             textarea.disabled = false;
@@ -185,17 +198,24 @@ export function VideoStudio() {
             // Clearing the start frame invalidates any selected end frame.
             uploadedEndImageUrl = null;
             endPicker?.reset();
-            selectedModel = t2vList()[0].id;
-            selectedModelName = t2vList()[0].name;
-            document.getElementById('v-model-btn-label').textContent = selectedModelName;
-            updateControlsForModel(selectedModel);
+            if (harnessCtrl.getMode() === 'harness') {
+                endPicker.trigger.classList.add('hidden');
+                endPicker.trigger.classList.remove('flex');
+            } else {
+                selectedModel = t2vList()[0].id;
+                selectedModelName = t2vList()[0].name;
+                document.getElementById('v-model-btn-label').textContent = selectedModelName;
+                updateControlsForModel(selectedModel);
+            }
             textarea.placeholder = t('video.placeholder');
             textarea.disabled = false;
         },
-        // Local mode keeps the start frame on disk for Wan2GP; otherwise fall
-        // back to the Muapi-hosted upload.
-        uploadFn: (file) => useLocalModel ? localAI.uploadFileToWan2gp(file) : muapi.uploadFile(file),
-        requireApiKey: () => !useLocalModel,
+        // Local mode keeps the start frame on disk for Wan2GP; Harness reads locally
+        // as data URL with no API key required; API mode uploads via MuAPI.
+        uploadFn: (file) => useLocalModel
+            ? localAI.uploadFileToWan2gp(file)
+            : (harnessCtrl.getMode() === 'harness' ? readFileAsDataUrl(file) : muapi.uploadFile(file)),
+        requireApiKey: () => !useLocalModel && harnessCtrl.getMode() !== 'harness',
     });
     topRow.appendChild(picker.trigger);
     container.appendChild(picker.panel);
@@ -208,8 +228,10 @@ export function VideoStudio() {
         anchorContainer: container,
         onSelect: ({ url }) => { uploadedEndImageUrl = url; },
         onClear: () => { uploadedEndImageUrl = null; },
-        uploadFn: (file) => useLocalModel ? localAI.uploadFileToWan2gp(file) : muapi.uploadFile(file),
-        requireApiKey: () => !useLocalModel,
+        uploadFn: (file) => useLocalModel
+            ? localAI.uploadFileToWan2gp(file)
+            : (harnessCtrl.getMode() === 'harness' ? readFileAsDataUrl(file) : muapi.uploadFile(file)),
+        requireApiKey: () => !useLocalModel && harnessCtrl.getMode() !== 'harness',
     });
     endPicker.trigger.title = 'End frame (optional)';
     // Visual marker: small "L" badge in the corner so users can tell the two
@@ -462,12 +484,18 @@ export function VideoStudio() {
                 const m = harnessCtrl.getSelectedModel();
                 document.getElementById('v-model-btn-label').textContent = m?.name || m?.id || 'Harness Model';
                 arBtn.style.display = 'flex';
-                durationBtn.style.display = 'none';
+                if (![5, 8, 10, 15, 20].includes(Number(selectedDuration))) selectedDuration = 10;
+                document.getElementById('v-duration-btn-label').textContent = `${selectedDuration}s`;
+                durationBtn.style.display = 'flex';
                 resolutionBtn.style.display = 'none';
                 qualityBtn.style.display = 'none';
                 modeBtn.style.display = 'none';
                 effectNameBtn.style.display = 'none';
                 videoPickerBtn.classList.add('hidden');
+                if (imageMode) {
+                    endPicker.trigger.classList.remove('hidden');
+                    endPicker.trigger.classList.add('flex');
+                }
             } else {
                 videoPickerBtn.classList.toggle('hidden', useLocalModel);
                 if (useLocalModel) await refreshLocalAvailability();
@@ -538,6 +566,68 @@ export function VideoStudio() {
     bottomRow.appendChild(controlsLeft);
     bottomRow.appendChild(generateBtn);
     bar.appendChild(bottomRow);
+
+    // ─── Advanced VFX, Color Grade & Audio Drawer ─────────────────────────────
+    const advancedPanel = document.createElement('div');
+    advancedPanel.id = 'v-advanced-panel';
+    advancedPanel.className = 'hidden flex-col gap-3 pt-4 border-t border-white/5';
+    advancedPanel.innerHTML = `
+        <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold uppercase tracking-widest text-secondary">Cinematic &amp; VFX Studio Options</span>
+            <button type="button" id="v-adv-close" class="text-xs text-white/45 hover:text-white">✕</button>
+        </div>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <label class="flex flex-col gap-1">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">VFX &amp; Atmosphere</span>
+                <select id="v-adv-vfx" class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary/50">
+                    ${VFX_PRESETS.map((p) => `<option value="${p.id}" class="bg-[#111] text-white">${p.label}</option>`).join('')}
+                </select>
+            </label>
+            <label class="flex flex-col gap-1">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Color Grade</span>
+                <select id="v-adv-grade" class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary/50">
+                    ${GRADE_PRESETS.map((p) => `<option value="${p.id}" class="bg-[#111] text-white">${p.label}</option>`).join('')}
+                </select>
+            </label>
+            <label class="flex flex-col gap-1">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Soundtrack Mood</span>
+                <select id="v-adv-music" class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary/50">
+                    ${MUSIC_MOODS.map((p) => `<option value="${p.id}" class="bg-[#111] text-white">${p.label}</option>`).join('')}
+                </select>
+            </label>
+            <label class="flex flex-col gap-1">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Anamorphic 2.39:1 Bars</span>
+                <select id="v-adv-letterbox" class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary/50">
+                    <option value="auto" class="bg-[#111] text-white">Auto</option>
+                    <option value="on" class="bg-[#111] text-white">On (Letterbox)</option>
+                    <option value="off" class="bg-[#111] text-white">Off (Full Frame)</option>
+                </select>
+            </label>
+        </div>
+        <label class="flex flex-col gap-1">
+            <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Negative Prompt / Avoid</span>
+            <input id="v-adv-negative" type="text" placeholder="e.g. garbled text, watermarks, blurry faces, morphing shapes" class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-primary/50" />
+        </label>
+    `;
+    bar.appendChild(advancedPanel);
+
+    const toggleAdvanced = (forceOpen) => {
+        const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : advancedPanel.classList.contains('hidden');
+        advancedPanel.classList.toggle('hidden', !nextOpen);
+        advancedPanel.classList.toggle('flex', nextOpen);
+        advancedBtn.classList.toggle('border-primary/40', nextOpen);
+        advancedBtn.classList.toggle('bg-primary/10', nextOpen);
+    };
+    advancedBtn.onclick = (e) => { e.stopPropagation(); toggleAdvanced(); };
+    advancedPanel.querySelector('#v-adv-close').onclick = (e) => { e.stopPropagation(); toggleAdvanced(false); };
+    advancedPanel.querySelector('#v-adv-vfx').onchange = (e) => { selectedVfx = e.target.value; };
+    advancedPanel.querySelector('#v-adv-grade').onchange = (e) => { selectedGrade = e.target.value; };
+    advancedPanel.querySelector('#v-adv-music').onchange = (e) => { selectedMusicMood = e.target.value; };
+    advancedPanel.querySelector('#v-adv-letterbox').onchange = (e) => {
+        selectedLetterbox = e.target.value === 'on' ? true : (e.target.value === 'off' ? false : null);
+    };
+    advancedPanel.querySelector('#v-adv-negative').oninput = (e) => { negativePrompt = e.target.value.trim(); };
+
     promptWrapper.appendChild(bar);
     container.appendChild(promptWrapper);
     container.appendChild(harnessCtrl.errorBanner);
@@ -1080,6 +1170,9 @@ export function VideoStudio() {
     newPromptBtn.className = 'bg-white/10 hover:bg-white/20 px-6 py-2.5 rounded-2xl text-xs font-bold transition-all border border-white/5 backdrop-blur-lg text-white';
     newPromptBtn.textContent = t('video.new');
 
+    const audioToggle = createVideoAudioToggleButton(resultVideo);
+
+    canvasControls.appendChild(audioToggle.button);
     canvasControls.appendChild(regenerateBtn);
     canvasControls.appendChild(extendBtn);
     canvasControls.appendChild(downloadBtn);
@@ -1098,13 +1191,15 @@ export function VideoStudio() {
         const isSeedance2 = genModel && (genModel === 'seedance-v2.0-t2v' || genModel === 'seedance-v2.0-i2v');
         extendBtn.classList.toggle('hidden', !isSeedance2);
 
-        resultVideo.src = videoUrl;
+        audioToggle.syncLabel();
         resultVideo.onloadeddata = () => {
             canvas.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-10', 'scale-95');
             canvas.classList.add('opacity-100', 'translate-y-0', 'scale-100');
             canvasControls.classList.remove('opacity-0');
             canvasControls.classList.add('opacity-100');
         };
+        resultVideo.src = videoUrl;
+        resultVideo.load?.();
     };
 
     // --- Helper: Add to history ---
@@ -1255,6 +1350,10 @@ export function VideoStudio() {
         textarea.value = '';
         picker.reset();
         uploadedImageUrl = null;
+        uploadedEndImageUrl = null;
+        endPicker?.reset();
+        endPicker.trigger.classList.add('hidden');
+        endPicker.trigger.classList.remove('flex');
         imageMode = false;
         uploadedVideoUrl = null;
         v2vMode = false;
@@ -1281,6 +1380,10 @@ export function VideoStudio() {
         textarea.value = '';
         picker.reset();
         uploadedImageUrl = null;
+        uploadedEndImageUrl = null;
+        endPicker?.reset();
+        endPicker.trigger.classList.add('hidden');
+        endPicker.trigger.classList.remove('flex');
         imageMode = false;
         selectedModel = 'seedance-v2.0-extend';
         selectedModelName = 'Seedance 2.0 Extend';
@@ -1298,8 +1401,8 @@ export function VideoStudio() {
         const prompt = textarea.value.trim();
 
         if (harnessCtrl.getMode() === 'harness') {
-            if (!prompt) {
-                alert('Please enter a prompt to run with the selected harness.');
+            if (!prompt && !uploadedImageUrl) {
+                alert('Please enter a prompt or upload a start image to generate a video with the selected harness.');
                 return;
             }
             hero.classList.add('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
@@ -1307,8 +1410,15 @@ export function VideoStudio() {
             generateBtn.innerHTML = `<span class="animate-spin inline-block mr-2 text-black">◌</span> ${t('common.generating')}`;
             try {
                 await harnessCtrl.runPrompt({
-                    prompt,
+                    prompt: prompt || 'Animate this reference scene with smooth cinematic camera motion',
                     aspectRatio: selectedAr,
+                    durationSec: selectedDuration,
+                    vfx: selectedVfx,
+                    grade: selectedGrade,
+                    musicMood: selectedMusicMood,
+                    letterbox: selectedLetterbox,
+                    negativePrompt,
+                    referenceImages: [uploadedImageUrl, uploadedEndImageUrl].filter(Boolean),
                     onMediaReady: ({ url, model: m }) => {
                         addToHistory({
                             id: Date.now().toString(),
