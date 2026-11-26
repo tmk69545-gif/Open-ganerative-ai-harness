@@ -6,8 +6,19 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { findLocalMediaPath, attachLocalMediaResult, saveRenderedMedia, parseStoryboardFromOutput } = require('../lib/harnesses/media.js');
+const {
+    findLocalMediaPath,
+    attachLocalMediaResult,
+    saveRenderedMedia,
+    parseStoryboardFromOutput,
+    parseThreeJsFromOutput,
+} = require('../lib/harnesses/media.js');
+const { installThreejsSkills } = require('../lib/harnesses/configure.js');
 const { buildHarnessStudioPrompt, extractMediaFromHarnessOutput } = await import('../src/lib/harnessStudioMode.js');
+const {
+    stripModuleBoilerplate,
+    compileThreeSceneBuilder,
+} = await import('../src/lib/harnessThreeComposer.js');
 const {
     getCanvasDimensions,
     computeSceneTimeline,
@@ -85,6 +96,7 @@ test('buildHarnessStudioPrompt avoids MuAPI when credentials are absent and enab
 
     const vidWithKey = buildHarnessStudioPrompt({
         kind: 'video',
+        videoEngine: 'storyboard',
         prompt: 'two race cars',
         aspectRatio: '16:9',
         harness: { id: 'antigravity', config: { mcpConfigured: true, muapiHasCredentials: true, nonMuapiServers: [] } },
@@ -92,6 +104,23 @@ test('buildHarnessStudioPrompt avoids MuAPI when credentials are absent and enab
     });
     assert.equal(vidWithKey.mode, 'auto');
     assert.doesNotMatch(vidWithKey.wrappedPrompt, /Do NOT call/i);
+
+    const threePlan = buildHarnessStudioPrompt({
+        kind: 'video',
+        videoEngine: 'threejs',
+        prompt: '3D product commercial',
+        aspectRatio: '16:9',
+        durationSec: 10,
+        vfx: 'frost',
+        grade: 'cold-steel',
+        musicMood: 'cinematic',
+        harness: agyNoKey,
+        hasAppMuapiKey: false,
+    });
+    assert.match(threePlan.wrappedPrompt, /Three\.js r186/);
+    assert.match(threePlan.wrappedPrompt, /ogai-threejs-meta/);
+    assert.match(threePlan.wrappedPrompt, /ogai-threejs-code/);
+    assert.match(threePlan.wrappedPrompt, /Do NOT call any muapi MCP tools/i);
 });
 
 test('storyboard parser attaches multi-scene images with Windows spaces and timeline normalizes duration/motion', () => {
@@ -158,6 +187,7 @@ test('Cinema Studio compiled camera prompts route cleanly through buildHarnessSt
 
     const sequence = buildHarnessStudioPrompt({
         kind: 'video',
+        videoEngine: 'storyboard',
         prompt: `${cinemaPrompt}\nTarget resolution: 2K`,
         aspectRatio: '16:9',
         harness: agyHarness,
@@ -166,6 +196,17 @@ test('Cinema Studio compiled camera prompts route cleanly through buildHarnessSt
     assert.equal(sequence.mode, 'auto');
     assert.match(sequence.wrappedPrompt, /ogai-storyboard/);
     assert.match(sequence.wrappedPrompt, /modular 8K digital cinema camera/i);
+
+    const sequence3d = buildHarnessStudioPrompt({
+        kind: 'video',
+        videoEngine: 'threejs',
+        prompt: `${cinemaPrompt}\nTarget resolution: 2K`,
+        aspectRatio: '16:9',
+        harness: agyHarness,
+        hasAppMuapiKey: false,
+    });
+    assert.match(sequence3d.wrappedPrompt, /ogai-threejs-code/);
+    assert.match(sequence3d.wrappedPrompt, /modular 8K digital cinema camera/i);
 });
 
 test('Cinematic VFX, grading, transition, music mood normalizers and 21:9/4:5 dimensions work cleanly', () => {
@@ -209,6 +250,7 @@ test('Cinematic VFX, grading, transition, music mood normalizers and 21:9/4:5 di
 
     const longPrompt = buildHarnessStudioPrompt({
         kind: 'video',
+        videoEngine: 'storyboard',
         prompt: 'Horbax air cooler opening',
         aspectRatio: '21:9',
         durationSec: 15,
@@ -225,4 +267,71 @@ test('Cinematic VFX, grading, transition, music mood normalizers and 21:9/4:5 di
     assert.match(longPrompt.wrappedPrompt, /VFX=frost/);
     assert.match(longPrompt.wrappedPrompt, /Avoid: blurry, watermarks/);
     assert.match(longPrompt.wrappedPrompt, /reference frame/i);
+});
+
+test('installThreejsSkills copies bundled CloudAI-X threejs skills across all harness targets', () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ogai-threejs-home-'));
+    const tmpWs = fs.mkdtempSync(path.join(os.tmpdir(), 'ogai-threejs-ws-'));
+    const env = { HOME: tmpHome, USERPROFILE: tmpHome, XDG_CONFIG_HOME: path.join(tmpHome, '.config') };
+
+    const res = installThreejsSkills({ homeDir: tmpHome, env, workspaceDir: tmpWs });
+    assert.equal(res.ok, true);
+    assert.equal(res.count, 13);
+    assert.ok(res.skillNames.includes('threejs-fundamentals'));
+    assert.ok(res.skillNames.includes('threejs-shaders'));
+    assert.equal(res.installedPaths.length, 5);
+    for (const root of res.installedPaths) {
+        assert.equal(fs.existsSync(path.join(root, 'threejs-fundamentals', 'SKILL.md')), true);
+    }
+});
+
+test('parseThreeJsFromOutput and compileThreeSceneBuilder handle ES boilerplate and extract meta/code cleanly', () => {
+    const rawOutput = `Here is your 3D commercial:
+\`\`\`ogai-threejs-meta
+{
+  "durationSec": 12,
+  "audioScript": "Meet the Horbax Polar 3D cooler.",
+  "musicMood": "cinematic",
+  "grade": "cold-steel",
+  "accentColor": "#38bdf8",
+  "letterbox": true,
+  "sound_effects": ["whoosh", "frost chime"],
+  "bloom": { "strength": 0.6, "radius": 0.5, "threshold": 0.8 },
+  "overlays": [
+    { "start": 0.5, "end": 4, "headline": "HORBAX POLAR", "subline": "ARCTIC COOLING", "style": "lower-third" }
+  ]
+}
+\`\`\`
+
+\`\`\`ogai-threejs-code
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+export default function buildScene({ THREE, scene, camera, utils }) {
+  let angle = 0;
+  return function update({ elapsed, progress, delta }) {
+    angle = progress * Math.PI * 2;
+    return { angle, elapsed, delta };
+  };
+}
+\`\`\``;
+
+    const attached = attachLocalMediaResult({ output: rawOutput });
+    assert.ok(attached.threejs);
+    assert.equal(attached.threejs.durationSec, 12);
+    assert.equal(attached.threejs.grade, 'cold-steel');
+    assert.equal(attached.threejs.letterbox, true);
+    assert.match(attached.threejs.soundEffects, /frost chime/);
+    assert.equal(attached.threejs.bloom.strength, 0.6);
+    assert.equal(attached.threejs.overlays.length, 1);
+
+    const stripped = stripModuleBoilerplate(attached.threejs.code);
+    assert.doesNotMatch(stripped, /import\s+\*\s+as\s+THREE/);
+    assert.doesNotMatch(stripped, /export\s+default/);
+
+    const buildFn = compileThreeSceneBuilder(attached.threejs.code);
+    const updateFn = buildFn({ THREE: {}, scene: {}, camera: {}, utils: {} });
+    assert.equal(typeof updateFn, 'function');
+    const step = updateFn({ elapsed: 1.5, progress: 0.5, delta: 1 / 30 });
+    assert.ok(Math.abs(step.angle - Math.PI) < 1e-6);
 });

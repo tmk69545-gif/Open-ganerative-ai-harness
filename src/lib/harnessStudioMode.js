@@ -1,6 +1,7 @@
 import { harnessClient, isHarnessAvailable } from './harnessClient.js';
 import { isLocalAIAvailable } from './localInferenceClient.js';
 import { renderStoryboardVideo } from './harnessVideoComposer.js';
+import { renderThreeJsVideo } from './harnessThreeComposer.js';
 import { t } from './i18n.js';
 
 export function formatStudioError(err) {
@@ -95,6 +96,7 @@ export function createVideoAudioToggleButton(videoEl) {
  */
 export function buildHarnessStudioPrompt({
     kind = 'image',
+    videoEngine = 'threejs',
     prompt,
     aspectRatio,
     durationSec = 10,
@@ -135,7 +137,7 @@ export function buildHarnessStudioPrompt({
         };
     }
 
-    if (canUseMuapi) {
+    if (canUseMuapi && videoEngine !== 'threejs') {
         return {
             wrappedPrompt: `If video generation MCP tools are available, generate the requested video (${ar}, ${durationSec}s): ${prompt}${negRule} and include the resulting media URL or saved file path in your reply. Otherwise write a single concise production-ready video generation prompt describing camera motion, lighting, and action with no markdown fences.`,
             mode: 'auto',
@@ -144,7 +146,6 @@ export function buildHarnessStudioPrompt({
     }
 
     const dur = Math.max(4, Math.min(35, Number(durationSec) || 10));
-    const sceneCount = dur >= 14 ? 4 : 3;
     const lookHints = [
         vfx && vfx !== 'auto' ? `VFX=${vfx}` : null,
         grade && grade !== 'auto' ? `grade=${grade}` : null,
@@ -153,6 +154,41 @@ export function buildHarnessStudioPrompt({
     ].filter(Boolean).join(', ');
     const styleLine = lookHints ? `\nPreferred cinematic direction: ${lookHints}.` : '';
     const refLine = hasReferenceImages ? '\nThe user also provided reference frame(s); keep brand/subject continuity matching them.' : '';
+
+    if (videoEngine === 'threejs') {
+        const skillsHint = 'Follow three.js r186 API conventions strictly (no removed RGBELoader/Clock/PlaneBufferGeometry, zero external CDN/URL textures; include #include <tonemapping_fragment> and #include <colorspace_fragment> in any ShaderMaterial).';
+        const nonMuapiPrefix = hasNonMuapiMcp
+            ? 'If a connected non-MuAPI video MCP server directly outputs a playable .mp4/.webm file, return its exact saved file path; otherwise build a real-time 30fps Three.js r186 3D scene.\n'
+            : 'Do NOT run shell commands, do NOT inspect workspace files, and do NOT write files to disk — compose the 3D scene code directly in your reply.\n';
+        return {
+            wrappedPrompt: `${nonMuapiPrefix}Create a real-time 30fps **Three.js r186** 3D video scene (${dur}s, ${ar}) for: ${prompt}${styleLine}${refLine}${negRule}
+Do NOT call any muapi MCP tools. ${skillsHint}
+Reply ONLY with TWO fenced blocks using these exact tags:
+
+1) \`\`\`ogai-threejs-meta
+{"durationSec":${dur},"audioScript":"Concise voiceover script","musicMood":"cinematic|upbeat|dramatic|electronic|ambient","grade":"natural|teal-amber|cold-steel|golden-hour|cyber-neon|cinema-film|noir","soundEffects":"whoosh, ambient chime","accentColor":"#22d3ee","letterbox":false,"bloom":{"strength":0.45,"radius":0.4,"threshold":0.85},"overlays":[{"start":0.4,"end":3.6,"headline":"Headline","subline":"Subtitle","style":"lower-third"},{"start":${Math.max(4, Math.round(dur * 0.65))},"end":${dur},"headline":"Final Brand","subline":"Tagline","style":"hero-center"}]}
+\`\`\`
+
+2) \`\`\`ogai-threejs-code
+function buildScene({ THREE, addons, scene, camera, renderer, width, height, durationSec, utils }) {
+  // addons has RoundedBoxGeometry, RoomEnvironment, EffectComposer, RenderPass, UnrealBloomPass, OutputPass (our runner already executes Bloom+OutputPass after composer).
+  // utils.createStudioStage({ background, fogColor, fogDensity, floorColor, floorRoughness, floorMetalness, accentColor, keyIntensity })
+  // utils.createTextTexture({ text, subtext, bg, fg, accent })
+  // utils.createSurfaceTexture({ kind: 'metal'|'grid'|'slate', primaryColor, secondaryColor })
+  // utils.createParticleField({ count, color, size, spread, speed, minY, maxY, additive })
+  // utils.clamp, utils.lerp, utils.smoothstep, utils.easeInOut
+  // Build sculpted procedural 3D meshes, articulated animations (e.g. lid/doors/parts), glowing shader materials, 3D particles, and dynamic multi-beat 3D camera choreography.
+  return function update({ elapsed, progress, delta }) {
+    // Animate meshes, particles, lights, and camera smoothly for 0 <= progress <= 1
+  };
+}
+\`\`\``,
+            mode: hasNonMuapiMcp ? 'auto' : 'plan',
+            autoApprove: Boolean(hasNonMuapiMcp),
+        };
+    }
+
+    const sceneCount = dur >= 14 ? 4 : 3;
     const schemaExample = `{"durationSec":${dur},"audioScript":"Concise voiceover script","musicMood":"cinematic|upbeat|dramatic|electronic|ambient","grade":"teal-amber|cold-steel|golden-hour|cyber-neon|cinema-film|noir","vfx":"frost|embers|flare|rays|neon|rain|dust","letterbox":false,"soundEffects":"whoosh, subtle chime","accentColor":"#22d3ee","scenes":[{"durationSec":3,"headline":"Short Title","subline":"Short Subtitle","motion":"zoom-in|zoom-out|pan-left|pan-right|tilt-up|tilt-down|handheld|punch-zoom","transition":"dissolve|flash|whip-left|whip-right|zoom-burst|wipe","vfx":"auto","titleStyle":"lower-third|hero-center","imagePath":"<exact saved jpg path>"}]}`;
 
     if (isAntigravity) {
@@ -398,6 +434,7 @@ export function createStudioHarnessController({
         prompt,
         aspectRatio,
         durationSec = 10,
+        videoEngine = 'threejs',
         vfx = 'auto',
         grade = 'auto',
         musicMood = 'auto',
@@ -449,6 +486,7 @@ export function createStudioHarnessController({
             const hasAppMuapiKey = Boolean((localStorage.getItem('muapi_key') || '').trim());
             const { wrappedPrompt, mode, autoApprove } = buildHarnessStudioPrompt({
                 kind: effectiveKind,
+                videoEngine,
                 prompt,
                 aspectRatio,
                 durationSec,
@@ -476,6 +514,44 @@ export function createStudioHarnessController({
             const extracted = extractMediaFromHarnessOutput(lastFinalOutput, effectiveKind);
             let mediaUrl = res?.mediaUrl || extracted.mediaUrl;
             let mediaType = res?.mediaType || extracted.mediaKind || effectiveKind;
+
+            if (effectiveKind === 'video' && !mediaUrl && res?.threejs?.code) {
+                const mergedThree = {
+                    ...res.threejs,
+                    durationSec: Number(durationSec) > 0 ? Number(durationSec) : res.threejs.durationSec,
+                    grade: grade && grade !== 'auto' ? grade : (res.threejs.grade || 'natural'),
+                    musicMood: musicMood && musicMood !== 'auto' ? musicMood : (res.threejs.musicMood || 'cinematic'),
+                    letterbox: typeof letterbox === 'boolean' ? letterbox : Boolean(res.threejs.letterbox),
+                };
+
+                logEl.textContent = 'Synthesizing voiceover narration & compiling 3D Three.js WebGL scene...\n';
+                const voiceAudioUrl = mergedThree.audioScript
+                    ? await harnessClient.synthesizeSpeech({ text: mergedThree.audioScript }).catch(() => null)
+                    : null;
+                const rendered = await renderThreeJsVideo({
+                    threejs: mergedThree,
+                    aspectRatio,
+                    voiceAudioUrl,
+                    onProgress: ({ pct }) => {
+                        logEl.textContent = `Rendering 30fps 3D WebGL video (Bloom + Shaders${voiceAudioUrl ? ' + Voiceover + SFX' : ''})... ${pct}%`;
+                    },
+                });
+                const saved = await harnessClient.saveMedia({
+                    bytes: rendered.bytes,
+                    ext: 'webm',
+                    name: `${prompt}-3d`,
+                }).catch(() => null);
+                mediaUrl = saved?.url || URL.createObjectURL(rendered.blob);
+                mediaType = 'video';
+
+                lastFinalOutput = [
+                    `Rendered ${Math.round(rendered.durationSec)}s 30fps Three.js r186 WebGL video (Grade: ${rendered.grade}${voiceAudioUrl ? ' · Voiceover + SFX + Music' : ' · SFX + Music'}).`,
+                    saved?.path ? `Saved to: ${saved.path}` : '',
+                    mergedThree.audioScript ? `Voiceover: "${mergedThree.audioScript}"` : '',
+                    `Overlays: ${(mergedThree.overlays || []).length}`,
+                ].filter(Boolean).join('\n');
+                logEl.textContent = lastFinalOutput;
+            }
 
             // If user uploaded reference frames for Video and harness returned no JSON scenes,
             // synthesize a multi-beat animated I2V/FLF storyboard straight from uploaded frames.

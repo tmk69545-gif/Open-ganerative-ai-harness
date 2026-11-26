@@ -8,6 +8,7 @@ const {
     configureHarnessMcp,
     unconfigureHarnessMcp,
     installMuapiSkills,
+    installThreejsSkills,
     startHarnessRun,
 } = require('../lib/harnesses');
 
@@ -97,6 +98,7 @@ Usage:
   ogai harness configure <id|all> [--surface auto|desktop|cli|ide|all] [--api-key <key>] [--api-key-env <ENV>] [--config <path>] [--skills] [--dry-run] [--json]
   ogai harness unconfigure <id|all> [--surface auto|desktop|cli|ide|all] [--config <path>] [--dry-run] [--json]
   ogai harness run <id> "<prompt>" [--model <modelId>] [--cwd <dir>] [--mode plan|auto] [--auto-approve] [--json]
+  ogai harness install-threejs-skills [--workspace <dir>] [--json]
   ogai harness doctor [--json]
 
 Supported harnesses: ${HARNESS_ORDER.join(', ')}
@@ -250,6 +252,20 @@ async function runCli(argv = process.argv.slice(2), io = {}) {
         await run.done;
         if (!flags.json) process.stdout.write('\n');
         return 0;
+    }
+
+    if (subcommand === 'install-threejs-skills') {
+        const res = installThreejsSkills({
+            workspaceDir: flags.workspace ? path.resolve(String(flags.workspace)) : null,
+        });
+        if (flags.json) {
+            out(JSON.stringify(res, null, 2));
+        } else if (res.ok) {
+            out(`Installed ${res.count} Three.js skills to ${res.installedPaths.length} harness directories:\n  - ${res.installedPaths.join('\n  - ')}`);
+        } else {
+            errOut(res.error || 'Failed to install Three.js skills.');
+        }
+        return res.ok ? 0 : 1;
     }
 
     if (subcommand === 'doctor') {

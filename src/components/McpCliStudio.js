@@ -27,6 +27,7 @@ export function McpCliStudio() {
             </div>
             <button id="harness-refresh-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80 transition-colors">${t('harness.refresh')}</button>
             <button id="harness-connect-all-btn" type="button" class="px-3.5 py-1.5 rounded-lg bg-primary text-black text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40">${t('harness.connectAll')}</button>
+            <button id="harness-threejs-skills-btn" type="button" class="px-3 py-1.5 rounded-lg bg-primary/15 hover:bg-primary/25 border border-primary/30 text-xs font-medium text-primary transition-colors disabled:opacity-40">Install Three.js Skills</button>
             <button id="harness-skills-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80 transition-colors disabled:opacity-40">${t('harness.installSkills')}</button>
         </div>
     `;
@@ -163,6 +164,7 @@ export function McpCliStudio() {
     const tabReference = header.querySelector('#tab-reference');
     const refreshBtn = header.querySelector('#harness-refresh-btn');
     const connectAllBtn = header.querySelector('#harness-connect-all-btn');
+    const threejsSkillsBtn = header.querySelector('#harness-threejs-skills-btn');
     const skillsBtn = header.querySelector('#harness-skills-btn');
     const osPill = header.querySelector('#harness-os-pill');
     const summaryEl = harnessSection.querySelector('#harness-summary');
@@ -415,6 +417,24 @@ export function McpCliStudio() {
             showBanner(err.message, 'error');
         } finally {
             skillsBtn.disabled = false;
+        }
+    };
+
+    threejsSkillsBtn.onclick = async () => {
+        if (!isHarnessAvailable()) return;
+        threejsSkillsBtn.disabled = true;
+        try {
+            const res = await harnessClient.installThreejsSkills();
+            showBanner(
+                res.ok
+                    ? `Installed ${res.count || 13} CloudAI-X Three.js r186 skills into ${res.installedPaths?.length || 0} harness folder(s).`
+                    : (res.error || 'Three.js skills install failed'),
+                res.ok ? 'info' : 'error'
+            );
+        } catch (err) {
+            showBanner(err.message, 'error');
+        } finally {
+            threejsSkillsBtn.disabled = false;
         }
     };
 

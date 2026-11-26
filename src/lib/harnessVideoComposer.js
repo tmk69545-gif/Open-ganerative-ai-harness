@@ -185,7 +185,7 @@ function createVfxParticles(w, h, count = 64) {
     return items;
 }
 
-function createFilmGrainTile(ctx) {
+export function createFilmGrainTile(ctx) {
     const tile = document.createElement('canvas');
     tile.width = 128;
     tile.height = 128;
@@ -474,7 +474,7 @@ function renderVfxLayer(ctx, vfxType, particles, w, h, elapsedSec, accentColor =
     ctx.restore();
 }
 
-function renderColorGradeAndFinish(ctx, { grade, grainPattern, grainSeed, letterbox, w, h }) {
+export function renderColorGradeAndFinish(ctx, { grade, grainPattern, grainSeed, letterbox, w, h }) {
     ctx.save();
 
     if (grade === 'teal-amber') {
@@ -540,7 +540,7 @@ function renderColorGradeAndFinish(ctx, { grade, grainPattern, grainSeed, letter
     }
 }
 
-function drawOverlayTypography(ctx, scene, w, h, localT, sceneDur, accentColor = '#22d3ee') {
+export function drawOverlayTypography(ctx, scene, w, h, localT, sceneDur, accentColor = '#22d3ee') {
     const headline = String(scene?.headline || scene?.caption || '').trim();
     const subline = String(scene?.subline || '').trim();
     if (!headline && !subline) return;
@@ -617,7 +617,7 @@ function drawOverlayTypography(ctx, scene, w, h, localT, sceneDur, accentColor =
     ctx.restore();
 }
 
-function pickSupportedMimeType(withAudio = true) {
+export function pickSupportedMimeType(withAudio = true) {
     if (typeof MediaRecorder === 'undefined') return '';
     const candidates = withAudio
         ? [
@@ -692,7 +692,7 @@ function scheduleTransitionSfx(audioCtx, destGain, noiseBuffer, atTime, { impact
     }
 }
 
-async function setupAudioGraph({ voiceAudioUrl, baseDurationSec, storyboard, aspectRatio }) {
+export async function setupAudioGraph({ voiceAudioUrl, baseDurationSec, storyboard, aspectRatio }) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return { finalDur: baseDurationSec, audioCtx: null, stream: null, cleanup: () => {} };
 

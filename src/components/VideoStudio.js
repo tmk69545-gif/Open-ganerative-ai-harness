@@ -79,6 +79,7 @@ export function VideoStudio() {
     let selectedGrade = 'auto';
     let selectedMusicMood = 'auto';
     let selectedLetterbox = null;
+    let selectedVideoEngine = 'threejs';
     let negativePrompt = '';
 
     const getCurrentModels = () => v2vMode ? v2vModels : (imageMode ? i2vList() : t2vList());
@@ -492,11 +493,13 @@ export function VideoStudio() {
                 modeBtn.style.display = 'none';
                 effectNameBtn.style.display = 'none';
                 videoPickerBtn.classList.add('hidden');
+                if (typeof syncVideoEngineVisibility === 'function') syncVideoEngineVisibility(true);
                 if (imageMode) {
                     endPicker.trigger.classList.remove('hidden');
                     endPicker.trigger.classList.add('flex');
                 }
             } else {
+                if (typeof syncVideoEngineVisibility === 'function') syncVideoEngineVisibility(false);
                 videoPickerBtn.classList.toggle('hidden', useLocalModel);
                 if (useLocalModel) await refreshLocalAvailability();
                 const list = getCurrentModels();
@@ -523,8 +526,42 @@ export function VideoStudio() {
             generateBtn.click();
         },
     });
+
+    const videoEngineWrap = document.createElement('div');
+    videoEngineWrap.className = 'hidden items-center bg-[#18181b] border border-white/10 rounded-xl p-0.5 gap-0.5 text-[11px] font-bold shrink-0';
+    videoEngineWrap.title = 'Choose 3D WebGL 30fps Three.js engine or 2D AI storyboard slides';
+    const threeEngineBtn = document.createElement('button');
+    threeEngineBtn.type = 'button';
+    threeEngineBtn.id = 'v-engine-threejs';
+    threeEngineBtn.textContent = '3D Three.js';
+    threeEngineBtn.setAttribute('data-tooltip', 'Real-time 30fps WebGL Three.js 3D video');
+    const sbEngineBtn = document.createElement('button');
+    sbEngineBtn.type = 'button';
+    sbEngineBtn.id = 'v-engine-storyboard';
+    sbEngineBtn.textContent = '2D Storyboard';
+    sbEngineBtn.setAttribute('data-tooltip', 'Multi-scene 2D image storyboard with transitions & voiceover');
+    const updateVideoEngineButtons = () => {
+        threeEngineBtn.className = `px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+            selectedVideoEngine === 'threejs' ? 'bg-primary text-black shadow-sm' : 'text-secondary hover:text-white'
+        }`;
+        sbEngineBtn.className = `px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+            selectedVideoEngine === 'storyboard' ? 'bg-primary text-black shadow-sm' : 'text-secondary hover:text-white'
+        }`;
+    };
+    const syncVideoEngineVisibility = (isHarness) => {
+        videoEngineWrap.classList.toggle('hidden', !isHarness);
+        videoEngineWrap.classList.toggle('flex', Boolean(isHarness));
+    };
+    threeEngineBtn.onclick = (e) => { e.stopPropagation(); selectedVideoEngine = 'threejs'; updateVideoEngineButtons(); };
+    sbEngineBtn.onclick = (e) => { e.stopPropagation(); selectedVideoEngine = 'storyboard'; updateVideoEngineButtons(); };
+    updateVideoEngineButtons();
+    syncVideoEngineVisibility(harnessCtrl.getMode() === 'harness');
+    videoEngineWrap.appendChild(threeEngineBtn);
+    videoEngineWrap.appendChild(sbEngineBtn);
+
     controlsLeft.appendChild(harnessCtrl.switcher);
     controlsLeft.appendChild(harnessCtrl.harnessWrap);
+    controlsLeft.appendChild(videoEngineWrap);
 
     controlsLeft.appendChild(modelBtn);
     controlsLeft.appendChild(arBtn);
@@ -1413,6 +1450,7 @@ export function VideoStudio() {
                     prompt: prompt || 'Animate this reference scene with smooth cinematic camera motion',
                     aspectRatio: selectedAr,
                     durationSec: selectedDuration,
+                    videoEngine: selectedVideoEngine,
                     vfx: selectedVfx,
                     grade: selectedGrade,
                     musicMood: selectedMusicMood,

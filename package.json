@@ -54,6 +54,7 @@
       "dist/**/*",
       "electron/**/*",
       "lib/harnesses/**/*",
+      "lib/skills/**/*",
       "bin/**/*"
     ],
     "extraResources": [
@@ -130,6 +131,7 @@
     "react-dom": "^19.0.0",
     "react-hot-toast": "^2.4.1",
     "studio": "*",
+    "three": "^0.186.1",
     "workflow-builder": "file:./packages/Vibe-Workflow/packages/workflow-builder",
     "xtend": "^4.0.2"
   },

@@ -6,6 +6,7 @@ const {
     configureHarnessMcp,
     unconfigureHarnessMcp,
     installMuapiSkills,
+    installThreejsSkills,
     startHarnessRun,
     cancelHarnessRun,
     listModelsForHarness,
@@ -97,6 +98,10 @@ function register() {
 
     ipcMain.handle('harness:install-skills', async (_, opts = {}) => {
         return installMuapiSkills(opts);
+    });
+
+    ipcMain.handle('harness:install-threejs-skills', async (_, opts = {}) => {
+        return installThreejsSkills(opts);
     });
 
     ipcMain.handle('harness:run', async (_, opts = {}) => {

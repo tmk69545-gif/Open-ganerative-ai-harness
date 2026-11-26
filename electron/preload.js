@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('harnesses', {
     pickPath: (opts) => ipcRenderer.invoke('harness:pick-path', opts),
     configure: (opts) => ipcRenderer.invoke('harness:configure', opts),
     installSkills: (opts) => ipcRenderer.invoke('harness:install-skills', opts),
+    installThreejsSkills: (opts) => ipcRenderer.invoke('harness:install-threejs-skills', opts),
     run: (opts) => ipcRenderer.invoke('harness:run', opts),
     cancel: (runId) => ipcRenderer.invoke('harness:cancel', runId),
     synthesizeSpeech: (opts) => ipcRenderer.invoke('harness:synthesize-speech', opts),

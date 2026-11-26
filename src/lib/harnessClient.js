@@ -40,6 +40,13 @@ class HarnessClient {
         return window.harnesses.installSkills(opts);
     }
 
+    async installThreejsSkills(opts = {}) {
+        if (!isHarnessAvailable() || !window.harnesses?.installThreejsSkills) {
+            throw new Error('Three.js skills installation is only available in the desktop app.');
+        }
+        return window.harnesses.installThreejsSkills(opts);
+    }
+
     async run(opts = {}) {
         if (!isHarnessAvailable()) throw new Error('Harness execution is only available in the desktop app.');
         return window.harnesses.run(opts);

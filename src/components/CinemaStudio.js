@@ -137,6 +137,7 @@ export function CinemaStudio() {
     settingsToolbar.className = 'flex flex-wrap items-center gap-2';
 
     let cinemaHarnessKind = 'image'; // 'image' (Cinema Shot) | 'video' (Cinema Sequence)
+    let cinemaVideoEngine = 'threejs'; // 'threejs' | 'storyboard'
 
     const harnessModelBtn = document.createElement('button');
     harnessModelBtn.type = 'button';
@@ -154,6 +155,18 @@ export function CinemaStudio() {
     const videoKindBtn = document.createElement('button');
     videoKindBtn.type = 'button';
     videoKindBtn.textContent = 'Video';
+
+    const videoEngineToggleWrap = document.createElement('div');
+    videoEngineToggleWrap.className = 'hidden items-center rounded-lg border border-white/10 bg-white/5 p-0.5 shrink-0';
+    videoEngineToggleWrap.title = 'Choose 3D Three.js WebGL 30fps engine or 2D Storyboard';
+    const threeEngineBtn = document.createElement('button');
+    threeEngineBtn.type = 'button';
+    threeEngineBtn.textContent = '3D Three.js';
+    const sbEngineBtn = document.createElement('button');
+    sbEngineBtn.type = 'button';
+    sbEngineBtn.textContent = '2D';
+
+    let syncCinemaEngineVisibility = () => {};
     const updateKindButtons = () => {
         shotKindBtn.className = cinemaHarnessKind === 'image'
             ? 'px-2.5 py-1 rounded-md text-[10px] font-bold bg-primary text-black transition-colors'
@@ -161,12 +174,23 @@ export function CinemaStudio() {
         videoKindBtn.className = cinemaHarnessKind === 'video'
             ? 'px-2.5 py-1 rounded-md text-[10px] font-bold bg-primary text-black transition-colors'
             : 'px-2.5 py-1 rounded-md text-[10px] font-bold text-white/60 hover:text-white transition-colors';
+        threeEngineBtn.className = cinemaVideoEngine === 'threejs'
+            ? 'px-2 py-1 rounded-md text-[10px] font-bold bg-primary text-black transition-colors whitespace-nowrap'
+            : 'px-2 py-1 rounded-md text-[10px] font-bold text-white/60 hover:text-white transition-colors whitespace-nowrap';
+        sbEngineBtn.className = cinemaVideoEngine === 'storyboard'
+            ? 'px-2 py-1 rounded-md text-[10px] font-bold bg-primary text-black transition-colors whitespace-nowrap'
+            : 'px-2 py-1 rounded-md text-[10px] font-bold text-white/60 hover:text-white transition-colors whitespace-nowrap';
+        syncCinemaEngineVisibility();
     };
     shotKindBtn.onclick = (e) => { e.stopPropagation(); cinemaHarnessKind = 'image'; updateKindButtons(); };
     videoKindBtn.onclick = (e) => { e.stopPropagation(); cinemaHarnessKind = 'video'; updateKindButtons(); };
-    updateKindButtons();
+    threeEngineBtn.onclick = (e) => { e.stopPropagation(); cinemaVideoEngine = 'threejs'; updateKindButtons(); };
+    sbEngineBtn.onclick = (e) => { e.stopPropagation(); cinemaVideoEngine = 'storyboard'; updateKindButtons(); };
     kindToggleWrap.appendChild(shotKindBtn);
     kindToggleWrap.appendChild(videoKindBtn);
+    videoEngineToggleWrap.appendChild(threeEngineBtn);
+    videoEngineToggleWrap.appendChild(sbEngineBtn);
+    updateKindButtons();
 
     const harnessCtrl = createStudioHarnessController({
         kind: 'image',
@@ -177,6 +201,7 @@ export function CinemaStudio() {
             harnessModelBtn.classList.toggle('flex', isH);
             kindToggleWrap.classList.toggle('hidden', !isH);
             kindToggleWrap.classList.toggle('flex', isH);
+            syncCinemaEngineVisibility();
             if (isH) {
                 const m = harnessCtrl.getSelectedModel();
                 harnessModelLabel.textContent = m?.name || m?.id || 'Harness Model';
@@ -240,10 +265,18 @@ export function CinemaStudio() {
         document.body.appendChild(menu);
     };
 
+    syncCinemaEngineVisibility = () => {
+        const show = harnessCtrl.getMode() === 'harness' && cinemaHarnessKind === 'video';
+        videoEngineToggleWrap.classList.toggle('hidden', !show);
+        videoEngineToggleWrap.classList.toggle('flex', show);
+    };
+    syncCinemaEngineVisibility();
+
     settingsToolbar.appendChild(harnessCtrl.switcher);
     settingsToolbar.appendChild(harnessCtrl.harnessWrap);
     settingsToolbar.appendChild(harnessModelBtn);
     settingsToolbar.appendChild(kindToggleWrap);
+    settingsToolbar.appendChild(videoEngineToggleWrap);
 
     // Helper: Create Dropdown
     const createDropdown = (items, selected, onSelect, trigger) => {
@@ -742,6 +775,7 @@ export function CinemaStudio() {
                     prompt: `${finalPrompt}\nTarget resolution: ${resLabel}`,
                     aspectRatio: currentSettings.aspect_ratio,
                     durationSec: 10,
+                    videoEngine: cinemaVideoEngine,
                     vfx: cinemaLook.vfx,
                     grade: cinemaLook.grade,
                     musicMood: 'cinematic',
