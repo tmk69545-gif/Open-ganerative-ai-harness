@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('localAI', {
 contextBridge.exposeInMainWorld('harnesses', {
     isElectron: true,
     detect: (opts) => ipcRenderer.invoke('harness:detect', opts),
+    listModels: (harnessId) => ipcRenderer.invoke('harness:list-models', harnessId),
     getOverrides: () => ipcRenderer.invoke('harness:get-overrides'),
     setOverride: (payload) => ipcRenderer.invoke('harness:set-override', payload),
     pickPath: (opts) => ipcRenderer.invoke('harness:pick-path', opts),

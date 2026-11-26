@@ -93,9 +93,10 @@ function printUsage() {
 
 Usage:
   ogai harness detect [--harness <id>] [--workspace <dir>] [--json]
+  ogai harness models [<id>] [--json]
   ogai harness configure <id|all> [--surface auto|desktop|cli|ide|all] [--api-key <key>] [--api-key-env <ENV>] [--config <path>] [--skills] [--dry-run] [--json]
   ogai harness unconfigure <id|all> [--surface auto|desktop|cli|ide|all] [--config <path>] [--dry-run] [--json]
-  ogai harness run <id> "<prompt>" [--cwd <dir>] [--mode plan|auto] [--auto-approve] [--json]
+  ogai harness run <id> "<prompt>" [--model <modelId>] [--cwd <dir>] [--mode plan|auto] [--auto-approve] [--json]
   ogai harness doctor [--json]
 
 Supported harnesses: ${HARNESS_ORDER.join(', ')}
@@ -144,6 +145,33 @@ async function runCli(argv = process.argv.slice(2), io = {}) {
             out(JSON.stringify(report, null, 2));
         } else {
             printDetectionReport(report);
+        }
+        return 0;
+    }
+
+    if (subcommand === 'models') {
+        const target = tokens[1] && tokens[1] !== 'all' ? [tokens[1]] : (flags.harness && flags.harness !== 'all' ? [String(flags.harness)] : undefined);
+        const report = await detectAllHarnesses({
+            harnessIds: target,
+            workspaceDir: process.cwd(),
+            includeModels: true,
+        });
+        const payload = report.harnesses.map((h) => ({
+            id: h.id,
+            name: h.name,
+            installed: h.canRun,
+            models: h.models || [],
+        }));
+        if (flags.json) {
+            out(JSON.stringify(payload, null, 2));
+        } else {
+            for (const h of payload) {
+                out(`\n${h.name} (${h.id}) — ${h.models.length} model(s) [${h.installed ? 'CLI ready' : 'fallback defaults'}]`);
+                for (const m of h.models) {
+                    out(`  ${m.isDefault ? '*' : ' '} ${m.id}${m.name && m.name !== m.id ? `  —  ${m.name}` : ''}`);
+                }
+            }
+            out('');
         }
         return 0;
     }
@@ -203,6 +231,7 @@ async function runCli(argv = process.argv.slice(2), io = {}) {
 
         const run = await startHarnessRun({
             harnessId,
+            model: flags.model ? String(flags.model) : undefined,
             prompt,
             cwd: flags.cwd ? String(flags.cwd) : process.cwd(),
             mode: flags.mode === 'auto' ? 'auto' : 'plan',

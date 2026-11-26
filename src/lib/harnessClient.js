@@ -10,6 +10,11 @@ class HarnessClient {
         return window.harnesses.detect(opts);
     }
 
+    async listModels(harnessId) {
+        if (!isHarnessAvailable()) return [];
+        return window.harnesses.listModels(harnessId);
+    }
+
     async getOverrides() {
         if (!isHarnessAvailable()) return {};
         return window.harnesses.getOverrides();

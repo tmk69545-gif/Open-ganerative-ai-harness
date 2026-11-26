@@ -24,6 +24,7 @@
     "configPrefix": "Config",
     "runnerTitle": "Prompt runner",
     "targetLabel": "CLI harness",
+    "modelLabel": "Model",
     "modeLabel": "Execution mode",
     "modePlan": "Safe / Plan",
     "modeAuto": "Standard workspace",

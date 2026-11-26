@@ -8,6 +8,7 @@ const {
     installMuapiSkills,
     startHarnessRun,
     cancelHarnessRun,
+    listModelsForHarness,
 } = require('../../lib/harnesses');
 
 const CONFIG_DIR = path.join(app.getPath('userData'), 'local-ai');
@@ -45,6 +46,17 @@ function register() {
             ...opts,
             overrides,
         });
+    });
+
+    ipcMain.handle('harness:list-models', async (_, harnessId) => {
+        const overrides = readOverridesConfig();
+        const report = await detectAllHarnesses({
+            harnessIds: harnessId ? [harnessId] : undefined,
+            overrides,
+            includeModels: true,
+        });
+        if (harnessId) return report.harnesses[0]?.models || [];
+        return Object.fromEntries(report.harnesses.map((h) => [h.id, h.models || []]));
     });
 
     ipcMain.handle('harness:get-overrides', () => readOverridesConfig());

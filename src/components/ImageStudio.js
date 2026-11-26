@@ -15,6 +15,7 @@ import { downloadImage } from '../../packages/studio/src/utils/downloadImage.js'
 import { appendGenerationRefundNotice } from '../../packages/studio/src/utils/generationLifecycle.js';
 import { createHistoryMediaWithDownload } from '../lib/historyDom.mjs';
 import { createHarnessPromptEnhancer } from '../lib/harnessEnhance.js';
+import { createStudioHarnessController } from '../lib/harnessStudioMode.js';
 
 function createInlineInstructions(type) {
     const el = document.createElement('div');
@@ -170,10 +171,10 @@ export function ImageStudio() {
 
     // Bottom Row: Controls
     const bottomRow = document.createElement('div');
-    bottomRow.className = 'flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 px-2 pt-4 border-t border-white/5';
+    bottomRow.className = 'flex flex-wrap items-center justify-between gap-3 px-2 pt-4 border-t border-white/5';
 
     const controlsLeft = document.createElement('div');
-    controlsLeft.className = 'flex items-center gap-1.5 md:gap-2.5 relative overflow-x-auto no-scrollbar pb-1 md:pb-0';
+    controlsLeft.className = 'flex flex-wrap items-center gap-2 min-w-0 flex-1 relative';
 
     const createControlBtn = (icon, label, id, tooltip) => {
         const btn = document.createElement('button');
@@ -202,37 +203,47 @@ export function ImageStudio() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-60 text-secondary"><path d="M6 2L3 6v15a2 2 0 002 2h14a2 2 0 002-2V6l-3-4H6z"/></svg>
     `, '720p', 'quality-btn', t('image.qualityTooltip'));
 
-    // Local / API source toggle (only shown in Electron)
-    let localToggleBtn = null;
-    if (isLocalAIAvailable()) {
-        localToggleBtn = document.createElement('button');
-        localToggleBtn.id = 'local-toggle-btn';
-        localToggleBtn.className = 'flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all border text-xs font-bold whitespace-nowrap';
-        const updateLocalToggleStyle = () => {
-            if (useLocalModel) {
-                localToggleBtn.className = 'flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all border text-xs font-bold whitespace-nowrap bg-primary/20 border-primary/40 text-primary';
-                localToggleBtn.textContent = t('image.local');
-            } else {
-                localToggleBtn.className = 'flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all border text-xs font-bold whitespace-nowrap bg-white/5 border-white/5 text-white/60 hover:bg-white/10';
-                localToggleBtn.textContent = t('image.api');
-            }
-        };
-        updateLocalToggleStyle();
-        localToggleBtn.onclick = (e) => {
-            e.stopPropagation();
-            useLocalModel = !useLocalModel;
-            updateLocalToggleStyle();
-            // Reflect active model in the button label
-            if (useLocalModel) {
+    const harnessCtrl = createStudioHarnessController({
+        kind: 'image',
+        onModeChange: (mode) => {
+            useLocalModel = mode === 'local';
+            harnessEnhancer.element.classList.toggle('hidden', mode === 'harness');
+            harnessEnhancer.element.classList.toggle('flex', mode !== 'harness' && harnessEnhancer.element.querySelector('select')?.options.length > 0);
+            if (mode === 'harness') {
+                const m = harnessCtrl.getSelectedModel();
+                document.getElementById('model-btn-label').textContent = m?.name || m?.id || 'Harness Model';
+                arBtn.style.display = 'flex';
+                qualityBtn.style.display = 'none';
+            } else if (mode === 'local') {
                 const lm = getLocalModelById(selectedLocalModel);
                 if (lm) document.getElementById('model-btn-label').textContent = lm.name;
                 applyLocalModelDefaults(lm);
+                arBtn.style.display = 'flex';
+                qualityBtn.style.display = 'none';
             } else {
                 document.getElementById('model-btn-label').textContent = selectedModelName;
+                arBtn.style.display = 'flex';
+                const res = getCurrentResolutions(selectedModel);
+                qualityBtn.style.display = res.length > 0 ? 'flex' : 'none';
             }
-        };
-        controlsLeft.appendChild(localToggleBtn);
-    }
+        },
+        onHarnessModelChange: ({ model }) => {
+            if (harnessCtrl.getMode() === 'harness') {
+                document.getElementById('model-btn-label').textContent = model?.name || model?.id || 'Harness Model';
+            }
+        },
+        onUseAsPrompt: (text) => {
+            textarea.value = text;
+            textarea.oninput();
+        },
+        onRunViaApi: (text) => {
+            textarea.value = text;
+            textarea.oninput();
+            generateBtn.click();
+        },
+    });
+    controlsLeft.appendChild(harnessCtrl.switcher);
+    controlsLeft.appendChild(harnessCtrl.harnessWrap);
 
     controlsLeft.appendChild(modelBtn);
     controlsLeft.appendChild(arBtn);
@@ -268,7 +279,7 @@ export function ImageStudio() {
     }
 
     const generateBtn = document.createElement('button');
-    generateBtn.className = 'bg-primary text-black px-6 md:px-8 py-3 md:py-3.5 rounded-xl md:rounded-[1.5rem] font-black text-sm md:text-base hover:shadow-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2.5 w-full sm:w-auto shadow-lg';
+    generateBtn.className = 'bg-primary text-black px-6 md:px-7 py-2.5 md:py-3 rounded-xl md:rounded-[1.5rem] font-black text-sm hover:shadow-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 w-full sm:w-auto shrink-0 whitespace-nowrap shadow-lg';
     generateBtn.setAttribute('data-tooltip', t('image.generateTooltip'));
     generateBtn.innerHTML = t('common.generate');
 
@@ -277,6 +288,8 @@ export function ImageStudio() {
     bar.appendChild(bottomRow);
     promptWrapper.appendChild(bar);
     container.appendChild(promptWrapper);
+    container.appendChild(harnessCtrl.errorBanner);
+    container.appendChild(harnessCtrl.outputPanel);
 
     const inlineInstructions = createInlineInstructions('image');
     inlineInstructions.classList.add('max-w-4xl', 'mt-8');
@@ -756,7 +769,7 @@ export function ImageStudio() {
                             <input type="text" id="model-search" placeholder="${t('common.searchModels')}" class="bg-transparent border-none text-xs text-white focus:ring-0 w-full p-0">
                         </div>
                     </div>
-                    <div class="text-[10px] font-bold text-secondary uppercase tracking-widest px-3 py-2 shrink-0">Available models</div>
+                    <div class="text-[10px] font-bold text-secondary uppercase tracking-widest px-3 py-2 shrink-0">${harnessCtrl.getMode() === 'harness' ? `${harnessCtrl.getSelectedHarness()?.name || 'Harness'} models` : (useLocalModel ? 'Local models' : 'Available models')}</div>
                     <div id="model-list-container" class="flex flex-col gap-1.5 overflow-y-auto custom-scrollbar pr-1 pb-2"></div>
                 </div>
             `;
@@ -765,8 +778,20 @@ export function ImageStudio() {
             const renderModels = (filter = '') => {
                 list.innerHTML = '';
 
+                if (harnessCtrl.getMode() === 'harness') {
+                    harnessCtrl.renderModelDropdown({
+                        listEl: list,
+                        filter,
+                        onSelect: (m) => {
+                            document.getElementById('model-btn-label').textContent = m.name || m.id;
+                            closeDropdown();
+                        },
+                    });
+                    return;
+                }
+
                 if (useLocalModel) {
-                    // ── Local model list (Wan2GP image-capable models only) ───
+                    // ── Local model list (sd.cpp & Wan2GP image-capable models) ───
                     const filtered = LOCAL_IMAGE_MODELS.filter(m =>
                         m.name.toLowerCase().includes(filter.toLowerCase()) ||
                         m.id.toLowerCase().includes(filter.toLowerCase())
@@ -776,6 +801,10 @@ export function ImageStudio() {
                         return;
                     }
                     filtered.forEach(m => {
+                        const metaParts = [
+                            m.type ? m.type.toUpperCase() : '',
+                            m.family || (m.sizeGB ? `${m.sizeGB} GB` : m.provider),
+                        ].filter(Boolean);
                         const item = document.createElement('div');
                         item.className = `flex items-center justify-between p-3.5 hover:bg-white/5 rounded-2xl cursor-pointer transition-all border border-transparent hover:border-white/5 ${selectedLocalModel === m.id ? 'bg-white/5 border-white/5' : ''}`;
                         item.innerHTML = `
@@ -786,7 +815,7 @@ export function ImageStudio() {
                                         <span class="text-xs font-bold text-white tracking-tight">${m.name}</span>
                                         ${m.featured ? '<span class="text-[9px] font-black px-1 py-0.5 rounded bg-primary/20 text-primary">FEATURED</span>' : ''}
                                     </div>
-                                    <span class="text-[10px] text-muted">${m.type.toUpperCase()} · ${m.family}</span>
+                                    <span class="text-[10px] text-muted">${metaParts.join(' · ')}</span>
                                 </div>
                             </div>
                             ${selectedLocalModel === m.id ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
@@ -1164,14 +1193,21 @@ export function ImageStudio() {
         picker.setMaxImages(1);
         // Reset to t2i mode
         imageMode = false;
-        selectedModel = t2iModels[0].id;
-        selectedModelName = t2iModels[0].name;
-        selectedAr = getAspectRatiosForModel(selectedModel)[0];
-        document.getElementById('model-btn-label').textContent = selectedModelName;
-        document.getElementById('ar-btn-label').textContent = selectedAr;
-        const resetResolutions = getResolutionsForModel(selectedModel);
-        qualityBtn.style.display = resetResolutions.length > 0 ? 'flex' : 'none';
-        if (resetResolutions.length > 0) document.getElementById('quality-btn-label').textContent = resetResolutions[0];
+        if (harnessCtrl.getMode() === 'harness') {
+            const hm = harnessCtrl.getSelectedModel();
+            document.getElementById('model-btn-label').textContent = hm?.name || hm?.id || 'Harness Model';
+            qualityBtn.style.display = 'none';
+        } else {
+            selectedModel = t2iModels[0].id;
+            selectedModelName = t2iModels[0].name;
+            selectedAr = getAspectRatiosForModel(selectedModel)[0];
+            document.getElementById('model-btn-label').textContent = selectedModelName;
+            document.getElementById('ar-btn-label').textContent = selectedAr;
+            const resetResolutions = getResolutionsForModel(selectedModel);
+            qualityBtn.style.display = resetResolutions.length > 0 ? 'flex' : 'none';
+            if (resetResolutions.length > 0) document.getElementById('quality-btn-label').textContent = resetResolutions[0];
+        }
+        harnessCtrl.clearError();
         textarea.placeholder = t('image.placeholder');
         textarea.focus();
     };
@@ -1180,6 +1216,7 @@ export function ImageStudio() {
     // 5. GENERATION LOGIC
     // ==========================================
     generateBtn.onclick = async () => {
+        harnessCtrl.clearError();
         const prompt = textarea.value.trim();
         if (imageMode) {
             if (uploadedImageUrls.length === 0) {
@@ -1191,6 +1228,37 @@ export function ImageStudio() {
                 alert('Please enter a prompt to generate an image.');
                 return;
             }
+        }
+
+        // ── Harness mode path ─────────────────────────────────────────────────
+        if (harnessCtrl.getMode() === 'harness') {
+            hero.classList.add('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = `<span class="animate-spin inline-block mr-2 text-black">◌</span> ${t('common.generating')}`;
+            try {
+                await harnessCtrl.runPrompt({
+                    prompt,
+                    aspectRatio: selectedAr,
+                    onMediaReady: ({ url, model }) => {
+                        addToHistory({
+                            id: Date.now().toString(),
+                            url,
+                            prompt,
+                            model,
+                            aspect_ratio: selectedAr,
+                            timestamp: new Date().toISOString(),
+                        });
+                        showImageInCanvas(url);
+                    },
+                });
+            } catch (e) {
+                hero.classList.remove('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
+                harnessCtrl.showError(e);
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = t('common.generate');
+            }
+            return;
         }
 
         // ── Local inference path ──────────────────────────────────────────────
@@ -1251,12 +1319,10 @@ export function ImageStudio() {
                 progressWrap.classList.add('hidden');
                 console.error('[Local] generation error:', e);
                 hero.classList.remove('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
-                console.error('[Local] full error:', e.message);
-                generateBtn.textContent = `Error: ${e.message.slice(0, 120)}`;
-                setTimeout(() => { generateBtn.innerHTML = t('common.generate'); }, 6000);
+                harnessCtrl.showError(e);
             } finally {
                 generateBtn.disabled = false;
-                if (!hadError) generateBtn.innerHTML = t('common.generate');
+                generateBtn.innerHTML = t('common.generate');
             }
             return;
         }
@@ -1333,14 +1399,10 @@ export function ImageStudio() {
             // Restore hero so the page doesn't look broken after a failed generation
             hero.classList.remove('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
             const errorMessage = appendGenerationRefundNotice(e.message, e);
-            generateBtn.textContent = `Error: ${errorMessage.slice(0, 100)}`;
-            setTimeout(() => {
-                generateBtn.innerHTML = t('common.generate');
-            }, 4000);
+            harnessCtrl.showError(errorMessage);
         } finally {
             generateBtn.disabled = false;
-            // Only reset the label on success; the catch timeout handles the error case
-            if (!hadError) generateBtn.innerHTML = t('common.generate');
+            generateBtn.innerHTML = t('common.generate');
         }
     };
 

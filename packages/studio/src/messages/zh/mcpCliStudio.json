@@ -24,6 +24,7 @@
     "configPrefix": "配置",
     "runnerTitle": "提示词运行器",
     "targetLabel": "CLI 工具",
+    "modelLabel": "模型",
     "modeLabel": "执行模式",
     "modePlan": "安全 / Plan",
     "modeAuto": "标准工作区",

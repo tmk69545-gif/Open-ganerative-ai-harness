@@ -14,7 +14,7 @@ export async function POST(request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { harnessId, prompt, cwd, mode = 'plan', autoApprove = false } = body;
+    const { harnessId, model, prompt, cwd, mode = 'plan', autoApprove = false } = body;
 
     if (!harnessId || !prompt || !String(prompt).trim()) {
         return new Response(
@@ -37,6 +37,7 @@ export async function POST(request) {
             try {
                 const run = await startHarnessRun({
                     harnessId,
+                    model: model || undefined,
                     prompt: String(prompt),
                     cwd: cwd || process.cwd(),
                     mode: mode === 'auto' ? 'auto' : 'plan',

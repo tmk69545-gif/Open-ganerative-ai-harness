@@ -9,6 +9,7 @@ import { isWan2gpModelId, getLocalModelById, localT2VModels, localI2VModels } fr
 import { createHistoryMediaWithDownload } from '../lib/historyDom.mjs';
 import { createProviderFallbackTile, getProviderLogo, getProviderLogoAlt, getProviderFallbackText, handleProviderLogoError, shouldInvertProviderLogo } from '../lib/providerLogos.js';
 import { createHarnessPromptEnhancer } from '../lib/harnessEnhance.js';
+import { createStudioHarnessController } from '../lib/harnessStudioMode.js';
 
 // Promotes a wan2gp catalog entry (lib/localModels.js shape) into the
 // `inputs`-shaped descriptor the Video Studio dropdowns/controls expect.
@@ -388,10 +389,10 @@ export function VideoStudio() {
 
     // Bottom Row: Controls
     const bottomRow = document.createElement('div');
-    bottomRow.className = 'flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 px-2 pt-4 border-t border-white/5';
+    bottomRow.className = 'flex flex-wrap items-center justify-between gap-3 px-2 pt-4 border-t border-white/5';
 
     const controlsLeft = document.createElement('div');
-    controlsLeft.className = 'flex items-center gap-1.5 md:gap-2.5 relative overflow-x-auto no-scrollbar pb-1 md:pb-0';
+    controlsLeft.className = 'flex flex-wrap items-center gap-2 min-w-0 flex-1 relative';
 
     const createControlBtn = (icon, label, id, tooltip) => {
         const btn = document.createElement('button');
@@ -445,44 +446,57 @@ export function VideoStudio() {
             console.warn('[VideoStudio] Could not read Wan2GP status:', err);
         }
     };
-    if (isLocalAIAvailable()) {
-        const localToggleBtn = document.createElement('button');
-        localToggleBtn.id = 'v-local-toggle-btn';
-        const updateLocalToggleStyle = () => {
-            localToggleBtn.className = useLocalModel
-                ? 'flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all border text-xs font-bold whitespace-nowrap bg-primary/20 border-primary/40 text-primary'
-                : 'flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all border text-xs font-bold whitespace-nowrap bg-white/5 border-white/5 text-white/60 hover:bg-white/10';
-            localToggleBtn.textContent = useLocalModel ? t('image.local') : t('image.api');
-        };
-        updateLocalToggleStyle();
-        localToggleBtn.onclick = async (e) => {
-            e.stopPropagation();
-            useLocalModel = !useLocalModel;
-            updateLocalToggleStyle();
-            // Uploads and video tools belong to one source — start clean after switching.
+    const harnessCtrl = createStudioHarnessController({
+        kind: 'video',
+        onModeChange: async (mode) => {
+            useLocalModel = mode === 'local';
+            harnessEnhancer.element.classList.toggle('hidden', mode === 'harness');
+            harnessEnhancer.element.classList.toggle('flex', mode !== 'harness' && harnessEnhancer.element.querySelector('select')?.options.length > 0);
             if (v2vMode) {
                 v2vMode = false;
                 uploadedVideoUrl = null;
                 showVideoIcon();
                 textarea.disabled = false;
             }
-            if (imageMode) {
-                picker.reset();
-                uploadedImageUrl = null;
-                imageMode = false;
+            if (mode === 'harness') {
+                const m = harnessCtrl.getSelectedModel();
+                document.getElementById('v-model-btn-label').textContent = m?.name || m?.id || 'Harness Model';
+                arBtn.style.display = 'flex';
+                durationBtn.style.display = 'none';
+                resolutionBtn.style.display = 'none';
+                qualityBtn.style.display = 'none';
+                modeBtn.style.display = 'none';
+                effectNameBtn.style.display = 'none';
+                videoPickerBtn.classList.add('hidden');
+            } else {
+                videoPickerBtn.classList.toggle('hidden', useLocalModel);
+                if (useLocalModel) await refreshLocalAvailability();
+                const list = getCurrentModels();
+                const target = (useLocalModel && list.find(m => localAvailability.get(m.id)?.ready)) || list[0];
+                selectedModel = target.id;
+                selectedModelName = target.name;
+                document.getElementById('v-model-btn-label').textContent = selectedModelName;
+                updateControlsForModel(selectedModel);
+                textarea.placeholder = t('video.placeholder');
             }
-            videoPickerBtn.classList.toggle('hidden', useLocalModel);
-            if (useLocalModel) await refreshLocalAvailability();
-            const list = getCurrentModels();
-            const target = (useLocalModel && list.find(m => localAvailability.get(m.id)?.ready)) || list[0];
-            selectedModel = target.id;
-            selectedModelName = target.name;
-            document.getElementById('v-model-btn-label').textContent = selectedModelName;
-            updateControlsForModel(selectedModel);
-            textarea.placeholder = t('video.placeholder');
-        };
-        controlsLeft.appendChild(localToggleBtn);
-    }
+        },
+        onHarnessModelChange: ({ model }) => {
+            if (harnessCtrl.getMode() === 'harness') {
+                document.getElementById('v-model-btn-label').textContent = model?.name || model?.id || 'Harness Model';
+            }
+        },
+        onUseAsPrompt: (text) => {
+            textarea.value = text;
+            textarea.oninput();
+        },
+        onRunViaApi: (text) => {
+            textarea.value = text;
+            textarea.oninput();
+            generateBtn.click();
+        },
+    });
+    controlsLeft.appendChild(harnessCtrl.switcher);
+    controlsLeft.appendChild(harnessCtrl.harnessWrap);
 
     controlsLeft.appendChild(modelBtn);
     controlsLeft.appendChild(arBtn);
@@ -517,7 +531,7 @@ export function VideoStudio() {
     effectNameBtn.style.display = 'none';
 
     const generateBtn = document.createElement('button');
-    generateBtn.className = 'bg-primary text-black px-6 md:px-8 py-3 md:py-3.5 rounded-xl md:rounded-[1.5rem] font-black text-sm md:text-base hover:shadow-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2.5 w-full sm:w-auto shadow-lg';
+    generateBtn.className = 'bg-primary text-black px-6 md:px-7 py-2.5 md:py-3 rounded-xl md:rounded-[1.5rem] font-black text-sm hover:shadow-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 w-full sm:w-auto shrink-0 whitespace-nowrap shadow-lg';
     generateBtn.setAttribute('data-tooltip', 'Generate AI video from prompt');
     generateBtn.innerHTML = t('common.generate');
 
@@ -526,6 +540,8 @@ export function VideoStudio() {
     bar.appendChild(bottomRow);
     promptWrapper.appendChild(bar);
     container.appendChild(promptWrapper);
+    container.appendChild(harnessCtrl.errorBanner);
+    container.appendChild(harnessCtrl.outputPanel);
 
     // Local generation progress + error panel (hidden until a local run starts)
     const localPanel = document.createElement('div');
@@ -696,7 +712,7 @@ export function VideoStudio() {
                             <input type="text" id="v-model-search" placeholder="${t('common.searchModels')}" class="bg-transparent border-none text-xs text-white focus:ring-0 w-full p-0">
                         </div>
                     </div>
-                    <div class="text-[10px] font-bold text-secondary uppercase tracking-widest px-3 py-2 shrink-0">${useLocalModel ? t('video.localModels') : 'Video models'}</div>
+                    <div class="text-[10px] font-bold text-secondary uppercase tracking-widest px-3 py-2 shrink-0">${harnessCtrl.getMode() === 'harness' ? `${harnessCtrl.getSelectedHarness()?.name || 'Harness'} models` : (useLocalModel ? t('video.localModels') : 'Video models')}</div>
                     <div id="v-model-list-container" class="flex flex-col gap-1.5 overflow-y-auto custom-scrollbar pr-1 pb-2"></div>
                 </div>
             `;
@@ -791,6 +807,18 @@ export function VideoStudio() {
             const renderModels = (filter = '') => {
                 list.innerHTML = '';
                 const lf = filter.toLowerCase();
+
+                if (harnessCtrl.getMode() === 'harness') {
+                    harnessCtrl.renderModelDropdown({
+                        listEl: list,
+                        filter,
+                        onSelect: (m) => {
+                            document.getElementById('v-model-btn-label').textContent = m.name || m.id;
+                            closeDropdown();
+                        },
+                    });
+                    return;
+                }
 
                 // Regular generation models (always t2v or i2v, never v2v)
                 const generationModels = imageMode ? i2vList() : t2vList();
@@ -1231,10 +1259,16 @@ export function VideoStudio() {
         v2vMode = false;
         showVideoIcon();
         hideLocalPanel();
-        selectedModel = t2vList()[0].id;
-        selectedModelName = t2vList()[0].name;
-        document.getElementById('v-model-btn-label').textContent = selectedModelName;
-        updateControlsForModel(selectedModel);
+        harnessCtrl.clearError();
+        if (harnessCtrl.getMode() === 'harness') {
+            const hm = harnessCtrl.getSelectedModel();
+            document.getElementById('v-model-btn-label').textContent = hm?.name || hm?.id || 'Harness Model';
+        } else {
+            selectedModel = t2vList()[0].id;
+            selectedModelName = t2vList()[0].name;
+            document.getElementById('v-model-btn-label').textContent = selectedModelName;
+            updateControlsForModel(selectedModel);
+        }
         textarea.placeholder = 'Describe the video you want to create';
         textarea.disabled = false;
         textarea.focus();
@@ -1259,7 +1293,44 @@ export function VideoStudio() {
     // 5. GENERATION LOGIC
     // ==========================================
     generateBtn.onclick = async () => {
+        harnessCtrl.clearError();
         const prompt = textarea.value.trim();
+
+        if (harnessCtrl.getMode() === 'harness') {
+            if (!prompt) {
+                alert('Please enter a prompt to run with the selected harness.');
+                return;
+            }
+            hero.classList.add('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = `<span class="animate-spin inline-block mr-2 text-black">◌</span> ${t('common.generating')}`;
+            try {
+                await harnessCtrl.runPrompt({
+                    prompt,
+                    aspectRatio: selectedAr,
+                    onMediaReady: ({ url, model: m }) => {
+                        addToHistory({
+                            id: Date.now().toString(),
+                            url,
+                            prompt,
+                            model: m,
+                            aspect_ratio: selectedAr,
+                            duration: selectedDuration,
+                            timestamp: new Date().toISOString(),
+                        });
+                        showVideoInCanvas(url, m);
+                    },
+                });
+            } catch (e) {
+                hero.classList.remove('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
+                harnessCtrl.showError(e);
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = t('common.generate');
+            }
+            return;
+        }
+
         const model = getCurrentModel();
         const isExtendMode = model?.requiresRequestId;
 
@@ -1488,10 +1559,12 @@ export function VideoStudio() {
                 // Local errors carry the Wan2GP log tail — show all of it, not a 60-char button label.
                 if (cancelled) hideLocalPanel();
                 else showLocalError(e.message);
+            } else {
+                harnessCtrl.showError(e);
             }
             generateBtn.innerHTML = cancelled ? t('video.localCancelled')
                 : isLocal ? t('video.localFailed')
-                : `Error: ${e.message.slice(0, 60)}`;
+                : t('common.generate');
             setTimeout(() => {
                 generateBtn.innerHTML = t('common.generate');
             }, 4000);

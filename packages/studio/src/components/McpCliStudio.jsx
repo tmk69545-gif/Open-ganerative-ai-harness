@@ -135,6 +135,7 @@ export default function McpCliStudio({ apiKey = '', locale = 'en' }) {
   const [busyAction, setBusyAction] = useState(false);
 
   const [selectedHarness, setSelectedHarness] = useState('claude');
+  const [selectedModel, setSelectedModel] = useState('');
   const [runMode, setRunMode] = useState('plan');
   const [runCwd, setRunCwd] = useState('');
   const [runPrompt, setRunPrompt] = useState('');
@@ -159,7 +160,11 @@ export default function McpCliStudio({ apiKey = '', locale = 'en' }) {
       setRemoteMode(false);
       setReport(data);
       const firstRunnable = data.harnesses?.find((h) => h.canRun);
-      if (firstRunnable) setSelectedHarness(firstRunnable.id);
+      if (firstRunnable) {
+        setSelectedHarness(firstRunnable.id);
+        const defModel = firstRunnable.models?.find((m) => m.isDefault) || firstRunnable.models?.[0];
+        setSelectedModel(defModel?.id || '');
+      }
     } catch (err) {
       setBanner({ kind: 'error', text: err.message });
     } finally {
@@ -227,6 +232,7 @@ export default function McpCliStudio({ apiKey = '', locale = 'en' }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           harnessId: selectedHarness,
+          model: selectedModel || undefined,
           prompt: runPrompt,
           cwd: runCwd.trim() || undefined,
           mode: runMode,
@@ -427,6 +433,9 @@ export default function McpCliStudio({ apiKey = '', locale = 'en' }) {
                         <span className="font-mono truncate" title={h.config.primaryPath || ''}>
                           {copy.harnesses.configPrefix}: {h.config.primaryPath || 'n/a'}
                         </span>
+                        <span className="font-mono tabular-nums shrink-0 text-white/55">
+                          {(h.models || []).length} models
+                        </span>
                       </div>
 
                       <div className="flex items-center gap-2 pt-1 mt-auto">
@@ -445,7 +454,11 @@ export default function McpCliStudio({ apiKey = '', locale = 'en' }) {
                         {h.canRun && (
                           <button
                             type="button"
-                            onClick={() => setSelectedHarness(h.id)}
+                            onClick={() => {
+                              setSelectedHarness(h.id);
+                              const defM = h.models?.find((m) => m.isDefault) || h.models?.[0];
+                              setSelectedModel(defM?.id || '');
+                            }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                               selectedHarness === h.id
                                 ? 'bg-white/10 border-white/20 text-white'
@@ -478,17 +491,38 @@ export default function McpCliStudio({ apiKey = '', locale = 'en' }) {
                   )}
                 </div>
 
-                <div className="grid md:grid-cols-3 gap-3">
+                <div className="grid md:grid-cols-4 gap-3">
                   <label className="flex flex-col gap-1.5">
                     <span className="text-xs font-medium text-white/65">{copy.harnesses.targetLabel}</span>
                     <select
                       value={selectedHarness}
-                      onChange={(e) => setSelectedHarness(e.target.value)}
+                      onChange={(e) => {
+                        const nextId = e.target.value;
+                        setSelectedHarness(nextId);
+                        const h = report.harnesses.find((item) => item.id === nextId);
+                        const defM = h?.models?.find((m) => m.isDefault) || h?.models?.[0];
+                        setSelectedModel(defM?.id || '');
+                      }}
                       className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-xs font-medium text-white focus:outline-none focus:border-[#22d3ee]/50"
                     >
                       {report.harnesses.map((h) => (
                         <option key={h.id} value={h.id} disabled={!h.canRun}>
                           {h.canRun ? `${h.name} CLI${h.surfaces?.cli?.version ? ` (v${h.surfaces.cli.version})` : ''}` : `${h.name} CLI (${copy.harnesses.notDetected})`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-white/65">{copy.harnesses.modelLabel || 'Model'}</span>
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-xs font-medium text-white focus:outline-none focus:border-[#22d3ee]/50"
+                    >
+                      {(report.harnesses.find((h) => h.id === selectedHarness)?.models || []).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name || m.id}
                         </option>
                       ))}
                     </select>

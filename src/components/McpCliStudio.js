@@ -59,10 +59,14 @@ export function McpCliStudio() {
             <h2 class="text-sm font-semibold text-white/90">${t('harness.runnerTitle')}</h2>
             <button id="runner-clear-btn" type="button" class="hidden text-xs text-white/50 hover:text-white transition-colors">Clear</button>
         </div>
-        <div class="grid md:grid-cols-3 gap-3">
+        <div class="grid md:grid-cols-4 gap-3">
             <label class="flex flex-col gap-1.5">
                 <span class="text-xs font-medium text-white/65">CLI harness</span>
                 <select id="runner-harness" class="w-full bg-card-bg border border-white/10 rounded-lg px-3 py-2 text-xs font-medium text-white focus:outline-none focus:border-primary/50"></select>
+            </label>
+            <label class="flex flex-col gap-1.5">
+                <span class="text-xs font-medium text-white/65">Model</span>
+                <select id="runner-model" class="w-full bg-card-bg border border-white/10 rounded-lg px-3 py-2 text-xs font-medium text-white focus:outline-none focus:border-primary/50"></select>
             </label>
             <label class="flex flex-col gap-1.5">
                 <span class="text-xs font-medium text-white/65">Execution mode</span>
@@ -165,6 +169,7 @@ export function McpCliStudio() {
     const gridEl = harnessSection.querySelector('#harness-grid');
 
     const runnerHarnessSel = runnerSection.querySelector('#runner-harness');
+    const runnerModelSel = runnerSection.querySelector('#runner-model');
     const runnerModeSel = runnerSection.querySelector('#runner-mode');
     const runnerCwdInput = runnerSection.querySelector('#runner-cwd');
     const runnerBrowseBtn = runnerSection.querySelector('#runner-browse-cwd');
@@ -193,7 +198,32 @@ export function McpCliStudio() {
     tabWorkbench.onclick = () => switchView('workbench');
     tabReference.onclick = () => switchView('reference');
 
+    let lastReport = null;
     let activeRunId = null;
+
+    const populateRunnerModels = (harnessId) => {
+        runnerModelSel.innerHTML = '';
+        const h = lastReport?.harnesses?.find((item) => item.id === harnessId);
+        const models = h?.models || [];
+        if (!models.length) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'Default';
+            opt.className = 'bg-[#111] text-white';
+            runnerModelSel.appendChild(opt);
+            return;
+        }
+        for (const m of models) {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name || m.id;
+            opt.className = 'bg-[#111] text-white';
+            if (m.isDefault) opt.selected = true;
+            runnerModelSel.appendChild(opt);
+        }
+    };
+
+    runnerHarnessSel.onchange = () => populateRunnerModels(runnerHarnessSel.value);
 
     const showBanner = (msg, kind = 'info') => {
         statusBanner.textContent = msg;
@@ -234,6 +264,7 @@ export function McpCliStudio() {
     };
 
     const renderHarnesses = (report) => {
+        lastReport = report;
         osPill.textContent = `${report.os}/${report.arch}`;
         summaryEl.textContent = `${report.summary.installedHarnesses}/${report.summary.totalHarnesses} installed · ${report.summary.cliReadyCount} CLI · ${report.summary.mcpConfiguredCount} MCP`;
 
@@ -262,8 +293,11 @@ export function McpCliStudio() {
                     ${renderSurfaceRow('CLI', h.surfaces.cli, h.id)}
                     ${renderSurfaceRow('IDE', h.surfaces.ide, h.id)}
                 </div>
-                <div class="text-[11px] font-mono text-white/45 truncate" title="${escapeHtml(h.config.primaryPath || '')}">
-                    Config: ${escapeHtml(h.config.primaryPath || 'n/a')}
+                <div class="flex items-center justify-between gap-2 text-[11px] font-mono text-white/45">
+                    <span class="truncate" title="${escapeHtml(h.config.primaryPath || '')}">
+                        Config: ${escapeHtml(h.config.primaryPath || 'n/a')}
+                    </span>
+                    <span class="shrink-0 tabular-nums text-white/55">${(h.models || []).length} models</span>
                 </div>
                 <div class="flex items-center gap-2 pt-1 mt-auto">
                     <button type="button" data-connect-mcp="${h.id}" data-action="${h.config.mcpConfigured ? 'unconfigure' : 'configure'}" class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
@@ -289,6 +323,7 @@ export function McpCliStudio() {
 
         const firstRunnable = report.harnesses.find((h) => h.canRun);
         if (firstRunnable) runnerHarnessSel.value = firstRunnable.id;
+        populateRunnerModels(runnerHarnessSel.value);
 
         gridEl.querySelectorAll('[data-connect-mcp]').forEach((btn) => {
             btn.onclick = async () => {
@@ -312,6 +347,7 @@ export function McpCliStudio() {
         gridEl.querySelectorAll('[data-select-runner]').forEach((btn) => {
             btn.onclick = () => {
                 runnerHarnessSel.value = btn.dataset.selectRunner;
+                populateRunnerModels(runnerHarnessSel.value);
                 runnerPromptInput.focus();
             };
         });
@@ -427,6 +463,7 @@ export function McpCliStudio() {
         try {
             await harnessClient.run({
                 harnessId,
+                model: runnerModelSel.value || undefined,
                 prompt,
                 cwd: runnerCwdInput.value.trim() || undefined,
                 mode: runnerModeSel.value,
