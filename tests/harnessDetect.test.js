@@ -215,3 +215,51 @@ test('detectAllHarnesses detects Linux Desktop (.desktop/XDG), CLI, IDE, and cus
     assert.equal(byId.codex.surfaces.cli.version, '0.150.0');
     assert.equal(byId.codex.surfaces.ide.extensions[0].ide, 'Cursor');
 });
+
+test('detectAllHarnesses tracks MuAPI credentials and non-MuAPI MCP servers accurately', async () => {
+    const home = 'C:\\Users\\Test User';
+    const appData = `${home}\\AppData\\Roaming`;
+    const files = {
+        [`${home}\\.local\\bin\\agy.exe`]: 'bin',
+        [`${home}\\.gemini\\config\\mcp_config.json`]: JSON.stringify({
+            mcpServers: {
+                muapi: { serverUrl: 'https://api.muapi.ai/mcp', headers: { Authorization: 'Bearer ${MUAPI_API_KEY}' } },
+                rea: { command: 'node', args: ['rea.mjs'] },
+            },
+        }),
+        [`${appData}\\npm\\codex.cmd`]: '@echo off',
+        [`${home}\\.codex\\config.toml`]: '[mcp_servers.muapi]\nurl = "https://api.muapi.ai/mcp"\nbearer_token_env_var = "MUAPI_API_KEY"\n[mcp_servers.wan2gp]\nurl = "http://localhost:7866/mcp"\n',
+    };
+
+    const fsImpl = createMemoryFs(files);
+    const execFileImpl = (cmd, args, opts, cb) => cb(null, '1.0.0', '');
+
+    const noKeyReport = await detectAllHarnesses({
+        harnessIds: ['antigravity', 'codex'],
+        platform: 'win32',
+        homeDir: home,
+        env: { USERPROFILE: home, APPDATA: appData, PATH: '' },
+        skipAppxProbe: true,
+        fsImpl,
+        execFileImpl,
+    });
+    const noKeyById = Object.fromEntries(noKeyReport.harnesses.map((h) => [h.id, h]));
+    assert.equal(noKeyById.antigravity.config.mcpConfigured, true);
+    assert.equal(noKeyById.antigravity.config.muapiHasCredentials, false);
+    assert.deepEqual(noKeyById.antigravity.config.nonMuapiServers, ['rea']);
+    assert.equal(noKeyById.codex.config.muapiHasCredentials, false);
+    assert.deepEqual(noKeyById.codex.config.nonMuapiServers, ['wan2gp']);
+
+    const withKeyReport = await detectAllHarnesses({
+        harnessIds: ['antigravity', 'codex'],
+        platform: 'win32',
+        homeDir: home,
+        env: { USERPROFILE: home, APPDATA: appData, PATH: '', MUAPI_API_KEY: 'sk-test-123' },
+        skipAppxProbe: true,
+        fsImpl,
+        execFileImpl,
+    });
+    const withKeyById = Object.fromEntries(withKeyReport.harnesses.map((h) => [h.id, h]));
+    assert.equal(withKeyById.antigravity.config.muapiHasCredentials, true);
+    assert.equal(withKeyById.codex.config.muapiHasCredentials, true);
+});

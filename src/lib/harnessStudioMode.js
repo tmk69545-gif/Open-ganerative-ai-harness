@@ -25,15 +25,15 @@ export function extractMediaFromHarnessOutput(text, kind = 'image') {
     }
 
     const mediaRegex = kind === 'video'
-        ? /(https?:\/\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)(?:\?[^\s"'<>)]*)?|file:\/\/\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)|[A-Za-z]:\\[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)|\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv))/i
-        : /(https?:\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif|svg)(?:\?[^\s"'<>)]*)?|https?:\/\/(?:cdn|api)\.muapi\.ai\/[^\s"'<>)]+|file:\/\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)|[A-Za-z]:\\[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)|\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif))/i;
+        ? /(https?:\/\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)(?:\?[^\s"'<>)]*)?|file:\/\/\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv)|[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*?\.(?:mp4|webm|mov|mkv)(?=$|[\s"'`),\]*])|\/[^\s"'<>)]+\.(?:mp4|webm|mov|mkv))/i
+        : /(https?:\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif|svg)(?:\?[^\s"'<>)]*)?|https?:\/\/(?:cdn|api)\.muapi\.ai\/[^\s"'<>)]+|file:\/\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)|[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*?\.(?:png|jpe?g|webp|gif)(?=$|[\s"'`),\]*])|\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif))/i;
 
     const match = raw.match(mediaRegex);
     if (match) {
         let url = match[1];
         if (/^[A-Za-z]:\\/.test(url) || url.startsWith('/')) {
             const normalized = url.replace(/\\/g, '/');
-            url = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`;
+            url = normalized.startsWith('/') ? `file://${encodeURI(normalized)}` : `file:///${encodeURI(normalized)}`;
         }
         return {
             mediaUrl: url,
@@ -44,6 +44,59 @@ export function extractMediaFromHarnessOutput(text, kind = 'image') {
     }
 
     return { mediaUrl: null, mediaKind: null, isSvg: false, text: raw };
+}
+
+/**
+ * Build the prompt and execution mode for running Studio image/video requests
+ * through a CLI harness without requiring paid MuAPI credentials.
+ */
+export function buildHarnessStudioPrompt({
+    kind = 'image',
+    prompt,
+    aspectRatio,
+    harness,
+    hasAppMuapiKey = false,
+} = {}) {
+    const ar = aspectRatio || (kind === 'video' ? '16:9' : '1:1');
+    const canUseMuapi = Boolean(hasAppMuapiKey || harness?.config?.muapiHasCredentials);
+    const hasNonMuapiMcp = Boolean(harness?.config?.nonMuapiServers?.length);
+    const isAntigravity = harness?.id === 'antigravity';
+
+    if (kind === 'image') {
+        if (isAntigravity) {
+            const muapiRule = canUseMuapi
+                ? 'Prefer your built-in generate_image / image-generator subagent first (or MuAPI/other MCP image tools if helpful).'
+                : 'Do NOT call any muapi MCP tools because no MuAPI API key is configured.';
+            return {
+                wrappedPrompt: `Generate an image for this request (${ar}): ${prompt}\nUse your built-in generate_image tool / image-generator subagent natively to generate the image file. ${muapiRule} Include the exact saved image file path in your reply.`,
+                mode: 'auto',
+                autoApprove: true,
+            };
+        }
+
+        const muapiRule = canUseMuapi
+            ? 'Use any image generation MCP/tool if available, or '
+            : 'Do NOT call muapi MCP tools (no MuAPI API key is configured). Use any non-MuAPI image generation tool/script if available, or ';
+        return {
+            wrappedPrompt: `${muapiRule}output either a saved local image file path (.png/.jpg/.webp) or a clean standalone <svg> illustration matching (${ar}) for: ${prompt}`,
+            mode: (canUseMuapi || hasNonMuapiMcp) ? 'auto' : 'plan',
+            autoApprove: Boolean(canUseMuapi || hasNonMuapiMcp),
+        };
+    }
+
+    if (canUseMuapi) {
+        return {
+            wrappedPrompt: `If video generation MCP tools are available, generate the requested video (${ar}): ${prompt} and include the resulting media URL or saved file path in your reply. Otherwise write a single concise production-ready video generation prompt describing camera motion, lighting, and action with no markdown fences.`,
+            mode: 'auto',
+            autoApprove: true,
+        };
+    }
+
+    return {
+        wrappedPrompt: `User video request (${ar}): ${prompt}\nDo NOT call any muapi MCP tools because no MuAPI API key is configured. Only call non-MuAPI video MCP tools or local video scripts (such as Wan2GP, ComfyUI, or ffmpeg) if installed on this machine — if one generates a playable .mp4 or .webm file, reply with its exact saved file path. Otherwise explain briefly that no local/non-MuAPI video generator backend is connected and output a single concise production-ready video generation prompt describing camera motion, lighting, and action with no markdown fences.`,
+        mode: hasNonMuapiMcp ? 'auto' : 'plan',
+        autoApprove: hasNonMuapiMcp,
+    };
 }
 
 /**
@@ -298,19 +351,21 @@ export function createStudioHarnessController({
         });
 
         try {
-            const mcpHint = activeHarness.config?.mcpConfigured
-                ? `If MuAPI MCP tools are available, call the appropriate ${kind} generation tool and include the resulting media URL in your reply. `
-                : '';
-            const wrappedPrompt = kind === 'image'
-                ? `${mcpHint}User request (${aspectRatio || '1:1'}): ${prompt}\nIf you cannot call an image generation tool directly, either output a clean standalone <svg> illustration or write a single concise production-ready image generation prompt with no markdown fences.`
-                : `${mcpHint}User request (${aspectRatio || '16:9'}): ${prompt}\nIf you cannot call a video generation tool directly, write a single concise production-ready video generation prompt describing camera motion, lighting, and action with no markdown fences.`;
+            const hasAppMuapiKey = Boolean((localStorage.getItem('muapi_key') || '').trim());
+            const { wrappedPrompt, mode, autoApprove } = buildHarnessStudioPrompt({
+                kind,
+                prompt,
+                aspectRatio,
+                harness: activeHarness,
+                hasAppMuapiKey,
+            });
 
             const res = await harnessClient.run({
                 harnessId: activeHarness.id,
                 model: modelId || undefined,
                 prompt: wrappedPrompt,
-                mode: activeHarness.config?.mcpConfigured ? 'auto' : 'plan',
-                autoApprove: Boolean(activeHarness.config?.mcpConfigured),
+                mode,
+                autoApprove,
             });
 
             lastFinalOutput = String(res?.output || '').trim();
@@ -326,6 +381,8 @@ export function createStudioHarnessController({
                 });
             }
 
+            const showApiFallback = Boolean(hasAppMuapiKey || activeHarness.config?.muapiHasCredentials);
+            apiGenBtn.classList.toggle('hidden', !showApiFallback);
             dotEl.className = 'harness-run-dot w-2 h-2 rounded-full bg-emerald-400';
             actionsEl.classList.remove('hidden');
             actionsEl.classList.add('flex');
