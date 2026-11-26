@@ -122,13 +122,14 @@ If you have a non-MuAPI video tool/MCP that creates an .mp4 or .webm file, reply
  */
 export function createStudioHarnessController({
     kind = 'image',
+    includeLocal = true,
     onModeChange,
     onHarnessModelChange,
     onUseAsPrompt,
     onRunViaApi,
 }) {
     const hasHarness = isHarnessAvailable();
-    const hasLocal = isLocalAIAvailable();
+    const hasLocal = includeLocal && isLocalAIAvailable();
 
     let sourceMode = 'api'; // 'api' | 'harness' | 'local'
     let harnesses = [];
@@ -331,7 +332,8 @@ export function createStudioHarnessController({
         }
     };
 
-    const runPrompt = async ({ prompt, aspectRatio, onMediaReady }) => {
+    const runPrompt = async ({ prompt, aspectRatio, kind: kindOverride, onMediaReady }) => {
+        const effectiveKind = kindOverride || kind;
         clearError();
         if (!hasHarness) throw new Error('Harnesses are only available in the Electron desktop app or CLI.');
         const harness = getSelectedHarness();
@@ -348,6 +350,7 @@ export function createStudioHarnessController({
         const modelLabel = modelObj?.name || modelId || 'Default';
 
         lastFinalOutput = '';
+        apiGenBtn.textContent = `Generate ${effectiveKind} via API`;
         outputPanel.classList.remove('hidden');
         outputPanel.classList.add('flex');
         actionsEl.classList.add('hidden');
@@ -370,7 +373,7 @@ export function createStudioHarnessController({
         try {
             const hasAppMuapiKey = Boolean((localStorage.getItem('muapi_key') || '').trim());
             const { wrappedPrompt, mode, autoApprove } = buildHarnessStudioPrompt({
-                kind,
+                kind: effectiveKind,
                 prompt,
                 aspectRatio,
                 harness: activeHarness,
@@ -388,10 +391,11 @@ export function createStudioHarnessController({
             lastFinalOutput = String(res?.output || '').trim();
             logEl.textContent = lastFinalOutput || 'Harness completed with no text output.';
 
-            const extracted = extractMediaFromHarnessOutput(lastFinalOutput, kind);
+            const extracted = extractMediaFromHarnessOutput(lastFinalOutput, effectiveKind);
             let mediaUrl = res?.mediaUrl || extracted.mediaUrl;
+            let mediaType = res?.mediaType || extracted.mediaKind || effectiveKind;
 
-            if (kind === 'video' && !mediaUrl && res?.storyboard?.scenes?.length) {
+            if (effectiveKind === 'video' && !mediaUrl && res?.storyboard?.scenes?.length) {
                 logEl.textContent = 'Synthesizing voiceover narration & rendering WebM video...\n';
                 const voiceAudioUrl = res.storyboard.audioScript
                     ? await harnessClient.synthesizeSpeech({ text: res.storyboard.audioScript }).catch(() => null)
@@ -410,6 +414,7 @@ export function createStudioHarnessController({
                     name: prompt,
                 }).catch(() => null);
                 mediaUrl = saved?.url || URL.createObjectURL(rendered.blob);
+                mediaType = 'video';
 
                 const sceneSummary = res.storyboard.scenes
                     .map((s, i) => `Scene ${i + 1} (${s.durationSec}s): ${s.headline || s.caption || 'Frame'}`)
@@ -428,6 +433,7 @@ export function createStudioHarnessController({
                 outputPanel.classList.remove('flex');
                 onMediaReady({
                     url: mediaUrl,
+                    mediaType,
                     model: `harness:${activeHarness.id}/${modelId || 'default'}`,
                     output: lastFinalOutput,
                 });

@@ -5,6 +5,7 @@ import { buildNanoBananaPrompt, CAMERA_MAP, LENS_MAP, FOCAL_PERSPECTIVE, APERTUR
 import { AuthModal } from './AuthModal.js';
 import { t } from '../lib/i18n.js';
 import { createHistoryImageWithLabel } from '../lib/historyDom.mjs';
+import { createStudioHarnessController } from '../lib/harnessStudioMode.js';
 
 export function CinemaStudio() {
     const container = document.createElement('div');
@@ -91,14 +92,14 @@ export function CinemaStudio() {
     // 3. FLOATING PROMPT BAR
     // ==========================================
     const promptBarWrapper = document.createElement('div');
-    promptBarWrapper.className = 'absolute bottom-8 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-4xl z-30';
+    promptBarWrapper.className = 'absolute bottom-8 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-4xl z-30 flex flex-col gap-3';
 
     const promptBar = document.createElement('div');
     promptBar.className = 'bg-[#1a1a1a] border border-white/10 rounded-[2rem] p-4 flex justify-between shadow-3xl items-end relative';
 
     // --- LEFT COLUMN (Input + Settings) ---
     const leftColumn = document.createElement('div');
-    leftColumn.className = 'flex-1 flex flex-col gap-3 min-h-[80px] justify-between py-1 px-1';
+    leftColumn.className = 'flex-1 flex flex-col gap-3 min-h-[80px] justify-between py-1 px-1 min-w-0';
 
     // 1. Input Area
     const inputRow = document.createElement('div');
@@ -109,21 +110,130 @@ export function CinemaStudio() {
     // Textarea
     const textarea = document.createElement('textarea');
     textarea.placeholder = t('cinema.placeholder');
-    textarea.className = 'flex-1 bg-transparent border-none text-white text-lg font-medium placeholder:text-white/20 focus:outline-none resize-none h-[28px] leading-relaxed overflow-hidden';
+    textarea.className = 'flex-1 bg-transparent border-none text-white text-lg font-medium placeholder:text-white/20 focus:outline-none resize-none h-[28px] max-h-[34vh] leading-relaxed overflow-y-auto custom-scrollbar';
     textarea.style.height = 'auto'; // Auto-grow check
     textarea.rows = 1;
     textarea.oninput = function () {
         this.style.height = 'auto';
-        this.style.height = (this.scrollHeight) + 'px';
+        const maxPx = Math.round(window.innerHeight * 0.34);
+        this.style.height = Math.min(this.scrollHeight, maxPx) + 'px';
     };
     inputRow.appendChild(textarea);
 
     leftColumn.appendChild(inputRow);
 
     // 2. Settings Toolbar (Bottom Left)
-    // 2. Settings Toolbar (Bottom Left)
     const settingsToolbar = document.createElement('div');
-    settingsToolbar.className = 'flex items-center gap-3'; // Removed pl-11 to align left
+    settingsToolbar.className = 'flex flex-wrap items-center gap-2';
+
+    let cinemaHarnessKind = 'image'; // 'image' (Cinema Shot) | 'video' (Cinema Sequence)
+
+    const harnessModelBtn = document.createElement('button');
+    harnessModelBtn.type = 'button';
+    harnessModelBtn.className = 'hidden items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-white/80 hover:text-white transition-colors bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 max-w-[190px]';
+    const harnessModelLabel = document.createElement('span');
+    harnessModelLabel.className = 'truncate';
+    harnessModelLabel.textContent = 'Model';
+    harnessModelBtn.appendChild(harnessModelLabel);
+
+    const kindToggleWrap = document.createElement('div');
+    kindToggleWrap.className = 'hidden items-center rounded-lg border border-white/10 bg-white/5 p-0.5 shrink-0';
+    const shotKindBtn = document.createElement('button');
+    shotKindBtn.type = 'button';
+    shotKindBtn.textContent = 'Shot';
+    const videoKindBtn = document.createElement('button');
+    videoKindBtn.type = 'button';
+    videoKindBtn.textContent = 'Video';
+    const updateKindButtons = () => {
+        shotKindBtn.className = cinemaHarnessKind === 'image'
+            ? 'px-2.5 py-1 rounded-md text-[10px] font-bold bg-primary text-black transition-colors'
+            : 'px-2.5 py-1 rounded-md text-[10px] font-bold text-white/60 hover:text-white transition-colors';
+        videoKindBtn.className = cinemaHarnessKind === 'video'
+            ? 'px-2.5 py-1 rounded-md text-[10px] font-bold bg-primary text-black transition-colors'
+            : 'px-2.5 py-1 rounded-md text-[10px] font-bold text-white/60 hover:text-white transition-colors';
+    };
+    shotKindBtn.onclick = (e) => { e.stopPropagation(); cinemaHarnessKind = 'image'; updateKindButtons(); };
+    videoKindBtn.onclick = (e) => { e.stopPropagation(); cinemaHarnessKind = 'video'; updateKindButtons(); };
+    updateKindButtons();
+    kindToggleWrap.appendChild(shotKindBtn);
+    kindToggleWrap.appendChild(videoKindBtn);
+
+    const harnessCtrl = createStudioHarnessController({
+        kind: 'image',
+        includeLocal: false,
+        onModeChange: (mode) => {
+            const isH = mode === 'harness';
+            harnessModelBtn.classList.toggle('hidden', !isH);
+            harnessModelBtn.classList.toggle('flex', isH);
+            kindToggleWrap.classList.toggle('hidden', !isH);
+            kindToggleWrap.classList.toggle('flex', isH);
+            if (isH) {
+                const m = harnessCtrl.getSelectedModel();
+                harnessModelLabel.textContent = m?.name || m?.id || 'Harness Model';
+            }
+        },
+        onHarnessModelChange: ({ model }) => {
+            harnessModelLabel.textContent = model?.name || model?.id || 'Harness Model';
+        },
+        onUseAsPrompt: (text) => {
+            textarea.value = text;
+            textarea.oninput();
+        },
+        onRunViaApi: (text) => {
+            textarea.value = text;
+            textarea.oninput();
+            generateBtn.click();
+        },
+    });
+
+    harnessModelBtn.onclick = (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.custom-dropdown').forEach((el) => el.remove());
+
+        const rect = harnessModelBtn.getBoundingClientRect();
+        const menu = document.createElement('div');
+        menu.className = 'custom-dropdown fixed bg-[#141414] border border-white/10 rounded-2xl p-2.5 shadow-2xl z-50 w-72 max-h-72 flex flex-col gap-2 animate-fade-in';
+        menu.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+        menu.style.left = `${rect.left}px`;
+
+        const search = document.createElement('input');
+        search.type = 'text';
+        search.placeholder = 'Search harness models...';
+        search.className = 'w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-primary/50';
+        const listEl = document.createElement('div');
+        listEl.className = 'flex flex-col gap-1 overflow-y-auto custom-scrollbar max-h-52';
+
+        const renderList = (q = '') => {
+            harnessCtrl.renderModelDropdown({
+                listEl,
+                filter: q,
+                onSelect: (m) => {
+                    harnessModelLabel.textContent = m?.name || m?.id || 'Harness Model';
+                    menu.remove();
+                },
+            });
+        };
+        renderList();
+        search.onclick = (ev) => ev.stopPropagation();
+        search.oninput = (ev) => renderList(ev.target.value);
+
+        menu.appendChild(search);
+        menu.appendChild(listEl);
+
+        const closeHandler = (ev) => {
+            if (!menu.contains(ev.target) && ev.target !== harnessModelBtn) {
+                menu.remove();
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+        document.body.appendChild(menu);
+    };
+
+    settingsToolbar.appendChild(harnessCtrl.switcher);
+    settingsToolbar.appendChild(harnessCtrl.harnessWrap);
+    settingsToolbar.appendChild(harnessModelBtn);
+    settingsToolbar.appendChild(kindToggleWrap);
 
     // Helper: Create Dropdown
     const createDropdown = (items, selected, onSelect, trigger) => {
@@ -244,6 +354,11 @@ export function CinemaStudio() {
     rightGroup.appendChild(generateBtn);
     promptBar.appendChild(rightGroup);
 
+    harnessCtrl.errorBanner.classList.replace('mt-3', 'mt-0');
+    harnessCtrl.outputPanel.classList.replace('mt-4', 'mt-0');
+    harnessCtrl.outputPanel.querySelector('.harness-run-log')?.classList.replace('max-h-72', 'max-h-40');
+    promptBarWrapper.appendChild(harnessCtrl.errorBanner);
+    promptBarWrapper.appendChild(harnessCtrl.outputPanel);
     promptBarWrapper.appendChild(promptBar);
     container.appendChild(promptBarWrapper);
 
@@ -388,6 +503,16 @@ export function CinemaStudio() {
     const resultImg = document.createElement('img');
     resultImg.className = 'max-h-[60vh] max-w-[90vw] rounded-2xl shadow-2xl border border-white/10 object-contain';
     imageContainer.appendChild(resultImg);
+
+    const resultVideo = document.createElement('video');
+    resultVideo.className = 'hidden max-h-[60vh] max-w-[90vw] rounded-2xl shadow-2xl border border-white/10 object-contain';
+    resultVideo.controls = true;
+    resultVideo.loop = true;
+    resultVideo.autoplay = true;
+    resultVideo.muted = true;
+    resultVideo.playsInline = true;
+    imageContainer.appendChild(resultVideo);
+
     canvas.appendChild(imageContainer);
 
     // Canvas Controls
@@ -421,16 +546,33 @@ export function CinemaStudio() {
             const thumb = document.createElement('div');
             thumb.className = `relative group/thumb cursor-pointer rounded-lg overflow-hidden border-2 transition-all duration-300 aspect-square ${idx === 0 ? 'border-[#22d3ee] shadow-glow-sm' : 'border-white/10 hover:border-white/30'}`;
 
-            const { media, overlay } = createHistoryImageWithLabel({
-                document,
-                url: entry.url,
-                mediaClassName: 'w-full h-full object-cover opacity-80 group-hover/thumb:opacity-100 transition-opacity',
-                overlayClassName: 'absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center',
-                labelClassName: 'text-[8px] font-bold text-white uppercase',
-                label: t('cinema.load'),
-            });
-            thumb.appendChild(media);
-            thumb.appendChild(overlay);
+            const isVideoEntry = entry.mediaType === 'video' || /\.webm(?:\?|$)|\.mp4(?:\?|$)/i.test(entry.url || '');
+            if (isVideoEntry) {
+                const vid = document.createElement('video');
+                vid.src = entry.url;
+                vid.muted = true;
+                vid.playsInline = true;
+                vid.className = 'w-full h-full object-cover opacity-80 group-hover/thumb:opacity-100 transition-opacity';
+                const overlay = document.createElement('div');
+                overlay.className = 'absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center';
+                const lbl = document.createElement('span');
+                lbl.className = 'text-[8px] font-bold text-white uppercase';
+                lbl.textContent = t('cinema.load');
+                overlay.appendChild(lbl);
+                thumb.appendChild(vid);
+                thumb.appendChild(overlay);
+            } else {
+                const { media, overlay } = createHistoryImageWithLabel({
+                    document,
+                    url: entry.url,
+                    mediaClassName: 'w-full h-full object-cover opacity-80 group-hover/thumb:opacity-100 transition-opacity',
+                    overlayClassName: 'absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center',
+                    labelClassName: 'text-[8px] font-bold text-white uppercase',
+                    label: t('cinema.load'),
+                });
+                thumb.appendChild(media);
+                thumb.appendChild(overlay);
+            }
 
             thumb.onclick = () => loadHistoryItem(entry, thumb);
             historyList.appendChild(thumb);
@@ -454,12 +596,14 @@ export function CinemaStudio() {
 
             // Update UI elements
             textarea.value = entry.settings.prompt || '';
+            textarea.oninput();
             updateSummaryCard();
             updateArBtn();
             updateResBtn(entry.settings.resolution || '2K');
         }
 
-        showCanvas(entry.url);
+        const isVideoEntry = entry.mediaType === 'video' || /\.webm(?:\?|$)|\.mp4(?:\?|$)/i.test(entry.url || '');
+        showCanvas(entry.url, isVideoEntry ? 'video' : 'image');
 
         // Highlight active history item
         if (thumbElement) {
@@ -472,8 +616,21 @@ export function CinemaStudio() {
         }
     };
 
-    const showCanvas = (url) => {
-        resultImg.src = url;
+    const showCanvas = (url, mediaType = 'image') => {
+        const isVideo = mediaType === 'video' || /\.webm(?:\?|$)|\.mp4(?:\?|$)/i.test(url || '');
+        if (isVideo) {
+            resultImg.classList.add('hidden');
+            resultImg.removeAttribute('src');
+            resultVideo.classList.remove('hidden');
+            resultVideo.src = url;
+            resultVideo.load?.();
+        } else {
+            try { resultVideo.pause?.(); } catch { /* ignore */ }
+            resultVideo.classList.add('hidden');
+            resultVideo.removeAttribute('src');
+            resultImg.classList.remove('hidden');
+            resultImg.src = url;
+        }
 
         // Hide Input UI
         heroSection.classList.add('opacity-0', 'pointer-events-none', 'scale-95');
@@ -487,6 +644,7 @@ export function CinemaStudio() {
     };
 
     const resetToPrompt = () => {
+        try { resultVideo.pause?.(); } catch { /* ignore */ }
         // Hide Canvas
         canvas.classList.add('opacity-0', 'pointer-events-none', 'translate-y-10', 'scale-95');
         canvas.classList.remove('opacity-100', 'translate-y-0', 'scale-100');
@@ -494,9 +652,11 @@ export function CinemaStudio() {
         // Show Input UI
         heroSection.classList.remove('opacity-0', 'pointer-events-none', 'scale-95');
         promptBarWrapper.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-20');
+        harnessCtrl.clearError();
 
         // Clear prompt for new shot?
         textarea.value = '';
+        textarea.oninput();
         textarea.focus();
     };
 
@@ -520,19 +680,22 @@ export function CinemaStudio() {
     };
 
     downloadBtn.onclick = async () => {
+        const isVid = !resultVideo.classList.contains('hidden') && resultVideo.src;
+        const targetUrl = isVid ? resultVideo.src : resultImg.src;
+        const ext = isVid ? (/\.mp4(?:\?|$)/i.test(targetUrl) ? 'mp4' : 'webm') : 'jpg';
         try {
-            const response = await fetch(resultImg.src);
+            const response = await fetch(targetUrl);
             const blob = await response.blob();
             const blobUrl = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = blobUrl;
-            a.download = `cinema-shot-${Date.now()}.jpg`;
+            a.download = `cinema-shot-${Date.now()}.${ext}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(blobUrl);
         } catch (err) {
-            window.open(resultImg.src, '_blank');
+            window.open(targetUrl, '_blank');
         }
     };
 
@@ -540,8 +703,53 @@ export function CinemaStudio() {
     // 5. GENERATION LOGIC UPDATE
     // ==========================================
     generateBtn.onclick = async () => {
+        harnessCtrl.clearError();
         const basePrompt = textarea.value.trim();
         if (!basePrompt) return;
+
+        // Compile Prompt with Cinema Studio camera & lens settings
+        const finalPrompt = buildNanoBananaPrompt(
+            basePrompt,
+            currentSettings.camera,
+            currentSettings.lens,
+            currentSettings.focal,
+            currentSettings.aperture
+        );
+        const resLabel = resBtn.dataset.value || '2K';
+
+        if (harnessCtrl.getMode() === 'harness') {
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = t('cinema.shooting');
+            try {
+                await harnessCtrl.runPrompt({
+                    prompt: `${finalPrompt}\nTarget resolution: ${resLabel}`,
+                    aspectRatio: currentSettings.aspect_ratio,
+                    kind: cinemaHarnessKind,
+                    onMediaReady: ({ url, mediaType, model }) => {
+                        const resolvedType = mediaType === 'video' || /\.webm(?:\?|$)|\.mp4(?:\?|$)/i.test(url || '') ? 'video' : 'image';
+                        addToHistory({
+                            url,
+                            mediaType: resolvedType,
+                            timestamp: Date.now(),
+                            settings: {
+                                prompt: basePrompt,
+                                ...currentSettings,
+                                resolution: resLabel,
+                                model,
+                            },
+                        });
+                        showCanvas(url, resolvedType);
+                    },
+                });
+            } catch (e) {
+                console.error(e);
+                harnessCtrl.showError(e);
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = t('cinema.generateBtn');
+            }
+            return;
+        }
 
         const apiKey = localStorage.getItem('muapi_key');
         if (!apiKey) {
@@ -551,15 +759,6 @@ export function CinemaStudio() {
 
         generateBtn.disabled = true;
         generateBtn.innerHTML = t('cinema.shooting');
-
-        // Compile Prompt
-        const finalPrompt = buildNanoBananaPrompt(
-            basePrompt,
-            currentSettings.camera,
-            currentSettings.lens,
-            currentSettings.focal,
-            currentSettings.aperture
-        );
 
         try {
             const res = await muapi.generateImage({
@@ -574,22 +773,23 @@ export function CinemaStudio() {
                 // Save to history
                 addToHistory({
                     url: res.url,
+                    mediaType: 'image',
                     timestamp: Date.now(),
                     settings: {
                         prompt: basePrompt,
                         ...currentSettings,
-                        resolution: resBtn.dataset.value
+                        resolution: resLabel
                     }
                 });
 
-                showCanvas(res.url);
+                showCanvas(res.url, 'image');
             } else {
                 throw new Error('No Data');
             }
 
         } catch (e) {
             console.error(e);
-            alert(t('cinema.generationFailed') + e.message);
+            harnessCtrl.showError(e);
         } finally {
             generateBtn.disabled = false;
             generateBtn.innerHTML = t('cinema.generateBtn');

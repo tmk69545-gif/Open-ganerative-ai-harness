@@ -132,3 +132,30 @@ test('storyboard parser attaches multi-scene images with Windows spaces and time
     assert.equal(fs.existsSync(saved.path), true);
     assert.match(saved.url, /^file:\/\/\//);
 });
+
+test('Cinema Studio compiled camera prompts route cleanly through buildHarnessStudioPrompt for Shot and Video', () => {
+    const cinemaPrompt = 'Horbax Air Cooler grand opening commercial, shot on a modular 8K digital cinema camera, using a creative tilt lens effect at 14mm, aperture f/1.4';
+    const agyHarness = { id: 'antigravity', config: { mcpConfigured: true, muapiHasCredentials: false, nonMuapiServers: [] } };
+
+    const shot = buildHarnessStudioPrompt({
+        kind: 'image',
+        prompt: `${cinemaPrompt}\nTarget resolution: 2K`,
+        aspectRatio: '16:9',
+        harness: agyHarness,
+        hasAppMuapiKey: false,
+    });
+    assert.equal(shot.mode, 'auto');
+    assert.match(shot.wrappedPrompt, /modular 8K digital cinema camera/i);
+    assert.match(shot.wrappedPrompt, /image-generator/i);
+
+    const sequence = buildHarnessStudioPrompt({
+        kind: 'video',
+        prompt: `${cinemaPrompt}\nTarget resolution: 2K`,
+        aspectRatio: '16:9',
+        harness: agyHarness,
+        hasAppMuapiKey: false,
+    });
+    assert.equal(sequence.mode, 'auto');
+    assert.match(sequence.wrappedPrompt, /ogai-storyboard/);
+    assert.match(sequence.wrappedPrompt, /modular 8K digital cinema camera/i);
+});
