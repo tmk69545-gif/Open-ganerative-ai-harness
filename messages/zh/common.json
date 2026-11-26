@@ -15,7 +15,8 @@
     "agents": "智能体",
     "design-agent": "设计智能体",
     "apps": "探索应用",
-    "ai-influencer": "AI 网红工作室"
+    "ai-influencer": "AI 网红工作室",
+    "mcp-cli": "Harnesses、MCP 与 CLI"
   },
   "categories": {
     "images": "图像",

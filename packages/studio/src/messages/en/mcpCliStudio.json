@@ -1,35 +1,68 @@
 {
   "hero": {
-    "badge": "For developers & AI agents",
-    "title": "MCP & CLI",
-    "description": "Use Open Generative AI from your terminal, your IDE, or any MCP-compatible assistant. Generate cinematic images, videos, and audio across 100+ models — without leaving your workflow."
+    "title": "Harnesses, MCP & CLI",
+    "description": "Detect installed Antigravity, Claude, OpenCode, and Codex surfaces across Linux and Windows, configure MuAPI MCP, and run headless prompts."
+  },
+  "tabs": {
+    "workbench": "Workbench",
+    "reference": "CLI & MCP Reference"
+  },
+  "harnesses": {
+    "sectionTitle": "System harnesses",
+    "refresh": "Refresh",
+    "connectAll": "Connect all MCP",
+    "installSkills": "Install skills",
+    "scanning": "Scanning local installations...",
+    "remoteNotice": "Host detection and CLI execution require localhost, the Electron app, or the terminal CLI:",
+    "installed": "Installed",
+    "notDetected": "Not found",
+    "mcpConnected": "MCP active",
+    "mcpNotSet": "MCP unset",
+    "connectMcp": "Connect MCP",
+    "disconnectMcp": "Disconnect",
+    "useRunner": "Select in runner",
+    "configPrefix": "Config",
+    "runnerTitle": "Prompt runner",
+    "targetLabel": "CLI harness",
+    "modeLabel": "Execution mode",
+    "modePlan": "Safe / Plan",
+    "modeAuto": "Standard workspace",
+    "cwdLabel": "Working directory",
+    "cwdPlaceholder": "Default: workspace root",
+    "promptPlaceholder": "Enter a task or prompt to run through the selected CLI harness...",
+    "autoApproveLabel": "Auto-approve tool permissions",
+    "runBtn": "Run prompt",
+    "runningBtn": "Running...",
+    "cancelBtn": "Cancel",
+    "clearOutput": "Clear",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "quickStart": {
-    "sectionLabel": "Quick start",
+    "sectionLabel": "Terminal commands",
     "steps": {
-      "installCli": "Install the CLI",
-      "signIn": "Sign in",
-      "addSkills": "Add the skills"
+      "installCli": "Detect installed harnesses",
+      "signIn": "Configure MuAPI MCP",
+      "addSkills": "Run headless prompt"
     }
   },
   "features": {
     "cli": {
-      "description": "Generate images, videos, and audio from the terminal across 14+ AI models. Dual interface — colored human output plus JSON for agents (--output-json, --jq filtering). Async workflows, file uploads, credit tracking."
+      "description": "Generate images, videos, and audio from the terminal with human output or --output-json for automation."
     },
     "mcp": {
-      "description": "Connect Claude, Cursor, Windsurf, and any MCP-compatible assistant to 100+ generative models. Hosted endpoint — no install. 19 structured tools with input/output schemas, async polling, and account management."
+      "description": "Connect Antigravity, Claude, OpenCode, Codex, or Cursor to 100+ generative models via https://api.muapi.ai/mcp."
     },
     "skills": {
-      "description": "Multimodal toolkit for Claude Code, Cursor, and Gemini CLI. Cinema Director, Nano-Banana, UI Designer, Logo Creator, Seedance 2, AI Clipping, and YouTube Shorts presets. Agent-native with JSON outputs and semantic exit codes."
+      "description": "Install reusable media generation skills and presets for coding agents."
     }
   },
-  "viewOnGithub": "View on GitHub",
+  "viewOnGithub": "GitHub",
   "examples": {
-    "sectionLabel": "Examples",
+    "sectionLabel": "Usage examples",
     "imageGeneration": "Image generation",
     "textToVideo": "Text-to-video",
     "audioCreation": "Audio creation",
     "runSkill": "Run a skill"
-  },
-  "footer": "Open-source · MIT licensed · Works with Claude, Cursor, Windsurf, and Gemini CLI"
+  }
 }

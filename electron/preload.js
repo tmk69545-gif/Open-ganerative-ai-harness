@@ -42,3 +42,20 @@ contextBridge.exposeInMainWorld('localAI', {
         return () => ipcRenderer.removeListener('local-ai:download-progress', listener);
     },
 });
+
+contextBridge.exposeInMainWorld('harnesses', {
+    isElectron: true,
+    detect: (opts) => ipcRenderer.invoke('harness:detect', opts),
+    getOverrides: () => ipcRenderer.invoke('harness:get-overrides'),
+    setOverride: (payload) => ipcRenderer.invoke('harness:set-override', payload),
+    pickPath: (opts) => ipcRenderer.invoke('harness:pick-path', opts),
+    configure: (opts) => ipcRenderer.invoke('harness:configure', opts),
+    installSkills: (opts) => ipcRenderer.invoke('harness:install-skills', opts),
+    run: (opts) => ipcRenderer.invoke('harness:run', opts),
+    cancel: (runId) => ipcRenderer.invoke('harness:cancel', runId),
+    onOutput: (callback) => {
+        const listener = (_, data) => callback(data);
+        ipcRenderer.on('harness:output', listener);
+        return () => ipcRenderer.removeListener('harness:output', listener);
+    },
+});

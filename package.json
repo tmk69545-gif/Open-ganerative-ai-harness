@@ -35,7 +35,12 @@
     "package:linux:deb": "node scripts/package-linux-deb.js",
     "package:linux:deb:arm64": "node scripts/package-linux-deb.js --arch arm64",
     "package:linux:deb:x64": "node scripts/package-linux-deb.js --arch x64",
-    "electron:build:all": "vite build && electron-builder --mac --win --linux"
+    "electron:build:all": "vite build && electron-builder --mac --win --linux",
+    "harness": "node bin/open-generative-ai.js"
+  },
+  "bin": {
+    "open-generative-ai": "./bin/open-generative-ai.js",
+    "ogai": "./bin/open-generative-ai.js"
   },
   "build": {
     "appId": "ai.generative.open",
@@ -47,7 +52,9 @@
     "afterPack": "./afterPack.js",
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "lib/harnesses/**/*",
+      "bin/**/*"
     ],
     "extraResources": [
       {

@@ -14,6 +14,7 @@ import { savePendingJob, removePendingJob, getPendingJobs } from '../lib/pending
 import { downloadImage } from '../../packages/studio/src/utils/downloadImage.js';
 import { appendGenerationRefundNotice } from '../../packages/studio/src/utils/generationLifecycle.js';
 import { createHistoryMediaWithDownload } from '../lib/historyDom.mjs';
+import { createHarnessPromptEnhancer } from '../lib/harnessEnhance.js';
 
 function createInlineInstructions(type) {
     const el = document.createElement('div');
@@ -248,6 +249,16 @@ export function ImageStudio() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-60 text-secondary"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
     `, t('common.tools'), 'tools-btn', t('image.toolsTooltip'));
     controlsLeft.appendChild(toolsBtn);
+
+    const harnessEnhancer = createHarnessPromptEnhancer({
+        kind: 'image',
+        getPrompt: () => textarea.value,
+        setPrompt: (next) => {
+            textarea.value = next;
+            textarea.oninput();
+        },
+    });
+    controlsLeft.appendChild(harnessEnhancer.element);
     // Show quality button if the default model has quality/resolution options
     const _initResolutions = getResolutionsForModel(defaultModel.id);
     qualityBtn.style.display = _initResolutions.length > 0 ? 'flex' : 'none';

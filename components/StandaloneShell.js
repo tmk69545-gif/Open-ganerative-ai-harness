@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { ImageStudio, VideoStudio, ClippingStudio, MotionControlStudio, VibeMotionStudio, LipSyncStudio, RecastStudio, CinemaStudio, AudioStudio, MarketingStudio, WorkflowStudio, AgentStudio, AppsStudio, AiInfluencerStudio, LayersStudio, getUserBalance } from 'studio';
+import { ImageStudio, VideoStudio, ClippingStudio, MotionControlStudio, VibeMotionStudio, LipSyncStudio, RecastStudio, CinemaStudio, AudioStudio, MarketingStudio, WorkflowStudio, AgentStudio, AppsStudio, AiInfluencerStudio, LayersStudio, McpCliStudio, getUserBalance } from 'studio';
 
 const DesignAgentStudio = dynamic(() => import('studio').then(mod => mod.DesignAgentStudio), {
   ssr: false,
@@ -205,6 +205,16 @@ const TABS = [
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
       </svg>
     )
+  },
+  {
+    id: 'mcp-cli',
+    label: 'Harnesses, MCP & CLI',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="4 17 10 11 4 5"/>
+        <line x1="12" y1="19" x2="20" y2="19"/>
+      </svg>
+    )
   }
 ];
 
@@ -248,7 +258,7 @@ const NAVIGATION_CATEGORIES = [
   {
     id: 'agents-automation',
     label: 'Agents & Automation',
-    tabIds: ['agents', 'workflows'],
+    tabIds: ['agents', 'workflows', 'mcp-cli'],
     icon: (
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="6" height="6" rx="1"/>
@@ -1050,6 +1060,9 @@ export default function StandaloneShell({ locale = 'en' }) {
             onGenerationComplete={makeSuccessCallback('ai-influencer')}
             onGenerationError={makeErrorCallback('ai-influencer')}
           />
+        </div>
+        <div className={activeTab === 'mcp-cli' ? "h-full w-full" : "hidden"}>
+          <McpCliStudio apiKey={apiKey} locale={locale} />
         </div>
       </div>
     </div>

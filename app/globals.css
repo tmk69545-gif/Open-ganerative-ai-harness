@@ -624,3 +624,28 @@ body {
   background-color: rgba(0, 0, 0, 0.6) !important;
   color: #ffffff !important;
 }
+
+/* 8. Harnesses, MCP & CLI Workbench Light Theme */
+[data-theme="light"] .harness-code {
+  background-color: #f4f5f7 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: #0e7490 !important;
+}
+
+[data-theme="light"] .harness-terminal {
+  background-color: #f8fafc !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+  color: #18181b !important;
+}
+
+[data-theme="light"] .harness-badge-ok {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  color: #047857 !important;
+}
+
+[data-theme="light"] .harness-badge-mcp {
+  background-color: rgba(8, 145, 178, 0.1) !important;
+  border-color: rgba(8, 145, 178, 0.25) !important;
+  color: #0e7490 !important;
+}

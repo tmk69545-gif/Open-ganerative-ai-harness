@@ -8,6 +8,7 @@ import { localAI, isLocalAIAvailable } from '../lib/localInferenceClient.js';
 import { isWan2gpModelId, getLocalModelById, localT2VModels, localI2VModels } from '../lib/localModels.js';
 import { createHistoryMediaWithDownload } from '../lib/historyDom.mjs';
 import { createProviderFallbackTile, getProviderLogo, getProviderLogoAlt, getProviderFallbackText, handleProviderLogoError, shouldInvertProviderLogo } from '../lib/providerLogos.js';
+import { createHarnessPromptEnhancer } from '../lib/harnessEnhance.js';
 
 // Promotes a wan2gp catalog entry (lib/localModels.js shape) into the
 // `inputs`-shaped descriptor the Video Studio dropdowns/controls expect.
@@ -495,6 +496,16 @@ export function VideoStudio() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-60 text-secondary"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 001.82-.33 1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-1.82.33A1.65 1.65 0 0019.4 9a1.65 1.65 0 00-1.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     `, 'Advanced', 'v-advanced-btn', 'Show advanced options');
     controlsLeft.appendChild(advancedBtn);
+
+    const harnessEnhancer = createHarnessPromptEnhancer({
+        kind: 'video',
+        getPrompt: () => textarea.value,
+        setPrompt: (next) => {
+            textarea.value = next;
+            textarea.oninput();
+        },
+    });
+    controlsLeft.appendChild(harnessEnhancer.element);
 
     // Initial visibility (t2v mode)
     const initDurations = getDurationsForModel(defaultModel.id);
